@@ -61,6 +61,8 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+            - name: config
+              mountPath: /config
             - name: configuration-files
               mountPath: /config/configuration.yaml
               subPath: configuration.yaml
@@ -71,6 +73,9 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: {{ include "homeassistant.fullname" . }}-pvc
         - name: configuration-files
           configMap:
             name: {{ include "homeassistant.fullname" . }}-configuration
