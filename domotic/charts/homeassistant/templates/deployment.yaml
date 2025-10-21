@@ -38,11 +38,11 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository | default "homeassistant/home-assistant" }}:{{ .Values.image.tag | default "stable" }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.service.port }}
+              containerPort: 8123
               protocol: TCP
           {{- with .Values.livenessProbe }}
           livenessProbe:
@@ -56,14 +56,23 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.volumeMounts }}
           volumeMounts:
+            - name: configuration-files
+              mountPath: /config/configuration.yaml
+              subPath: configuration.yaml
+            - name: configuration-files
+              mountPath: /config/automations.yaml
+              subPath: automations.yaml
+            {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.volumes }}
+            {{- end }}
       volumes:
+        - name: configuration-files
+          configMap:
+            name: {{ include "homeassistant.fullname" . }}-configuration
+        {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

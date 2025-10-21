@@ -7,11 +7,11 @@ replicaCount: 1
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
-  repository: nginx
+  repository: "homeassistant/home-assistant"
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: ""
+  tag: "stable"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -78,7 +78,7 @@ ingress:
 # (see: https://gateway-api.sigs.k8s.io/guides/)
 httpRoute:
   # HTTPRoute enabled.
-  enabled: false
+  enabled: true
   # HTTPRoute annotations.
   annotations: {}
   # Which Gateways this Route is attached to.
@@ -88,13 +88,13 @@ httpRoute:
     # namespace: default
   # Hostnames matching HTTP header.
   hostnames:
-  - chart-example.local
+  - homeassistant.local
   # List of rules and filters applied.
   rules:
   - matches:
     - path:
         type: PathPrefix
-        value: /headers
+        value: /
   #   filters:
   #   - type: RequestHeaderModifier
   #     requestHeaderModifier:
@@ -159,3 +159,29 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+homeassistant:
+  name: Home
+  latitude: 0.0
+  longitude: 0.0
+  elevation: 0
+  unit_system: metric
+  currency: USD
+  country: US
+  external_url: http://example.com
+  internal_url: http://homeassistant.local
+
+logger:
+  default: info
+
+frontend:
+  themes: "{}"
+
+config:
+  enabled: true
+  path: /config
+  existingClaim: ""
+  bootstrapImage:
+    repository: busybox
+    tag: "1.36.1"
+    pullPolicy: IfNotPresent

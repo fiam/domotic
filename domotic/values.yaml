@@ -159,3 +159,7 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+homeassistant:
+  image:
+    tag: stable
