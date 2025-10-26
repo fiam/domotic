@@ -1,0 +1,5 @@
+1. Connect to the broker from your workstation:
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "mosquitto.fullname" . }} 1883:{{ .Values.service.mqttPort }}
+
+2. Use the Kubernetes service DNS to point Home Assistant (or any MQTT client) at:
+   {{ include "mosquitto.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.mqttPort }}
