@@ -15,7 +15,7 @@ kind:
 
 .PHONY: helm-dev
 helm-dev:
-	helm upgrade --install dev ./domotic --create-namespace --wait --atomic
+	helm upgrade --install dev ./domotic --create-namespace --wait --atomic -f values.yaml
 
 
 .PHONY: secrets

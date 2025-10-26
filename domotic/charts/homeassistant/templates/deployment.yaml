@@ -11,12 +11,14 @@ spec:
   selector:
     matchLabels:
       {{- include "homeassistant.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
+      
       annotations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}{{- toYaml . | nindent 8 }}{{- end }}
       labels:
         {{- include "homeassistant.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}

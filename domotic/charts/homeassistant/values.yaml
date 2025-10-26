@@ -160,7 +160,7 @@ tolerations: []
 
 affinity: {}
 
-homeassistant:
+config:
   name: Home
   latitude: 0.0
   longitude: 0.0
@@ -175,15 +175,3 @@ homeassistant:
 
 logger:
   default: info
-
-frontend:
-  themes: "{}"
-
-config:
-  enabled: true
-  path: /config
-  existingClaim: ""
-  bootstrapImage:
-    repository: busybox
-    tag: "1.36.1"
-    pullPolicy: IfNotPresent

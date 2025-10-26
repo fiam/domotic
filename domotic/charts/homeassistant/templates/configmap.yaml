@@ -8,6 +8,7 @@ data:
   automations.yaml: |-
 
   configuration.yaml: |
+    {{- $cfg := .Values.config }}
     default_config:
     frontend:
       themes: !include_dir_merge_named themes
@@ -18,12 +19,12 @@ data:
         - 10.0.0.0/8
     # Home Assistant configuration.yaml
     homeassistant:
-      name: {{ .Values.homeassistant.name | default "Home" }}
-      latitude: {{ .Values.homeassistant.latitude | default 0.0 }}
-      longitude: {{ .Values.homeassistant.longitude | default 0.0 }}
-      elevation: {{ .Values.homeassistant.elevation | default 0 }}
-      unit_system: {{ .Values.homeassistant.unit_system | default "metric" }}
-      currency: {{ .Values.homeassistant.currency | default "USD" }}
-      country: {{ .Values.homeassistant.country | default "US" }}
-      external_url: {{ .Values.homeassistant.external_url | default "http://example.com" }}
-      internal_url: {{ .Values.homeassistant.internal_url | default "http://homeassistant.local" }}
+      name: {{ $cfg.name | default "Home" }}
+      latitude: {{ $cfg.latitude | default 0.0 }}
+      longitude: {{ $cfg.longitude | default 0.0 }}
+      elevation: {{ $cfg.elevation | default 0 }}
+      unit_system: {{ $cfg.unit_system | default "metric" }}
+      currency: {{ $cfg.currency | default "USD" }}
+      country: {{ $cfg.country | default "US" }}
+      external_url: {{ $cfg.external_url | default "http://example.com" }}
+      internal_url: {{ $cfg.internal_url | default "http://homeassistant.local" }}
