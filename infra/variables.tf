@@ -21,6 +21,12 @@ variable "cloudflare_domain" {
   description = "Domain to create the subdomains for tunnel routing"
 }
 
+variable "cloudflare_homeassistant_subdomain" {
+  type        = string
+  description = "Subdomain for Home Assistant access"
+  default     = "homeassistant"
+}
+
 variable "kubernetes_namespace" {
   type        = string
   description = "Kubernetes namespace to deploy resources"

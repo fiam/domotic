@@ -44,4 +44,4 @@ affinity: {}
 
 secret:
   name: cloudflared
-  key: token
+  key: tunnel_token
