@@ -5,26 +5,37 @@ metadata:
   labels:
     {{- include "homeassistant.labels" . | nindent 4 }}
 data:
-  automations.yaml: |-
-
   configuration.yaml: |
     {{- $cfg := .Values.config }}
     default_config:
     frontend:
       themes: !include_dir_merge_named themes
-    automation: !include automations.yaml
     http:
       use_x_forwarded_for: true
       trusted_proxies:
         - 10.0.0.0/8
-    # Home Assistant configuration.yaml
     homeassistant:
       name: {{ $cfg.name | default "Home" }}
-      latitude: {{ $cfg.latitude | default 0.0 }}
-      longitude: {{ $cfg.longitude | default 0.0 }}
-      elevation: {{ $cfg.elevation | default 0 }}
-      unit_system: {{ $cfg.unit_system | default "metric" }}
-      currency: {{ $cfg.currency | default "USD" }}
-      country: {{ $cfg.country | default "US" }}
       external_url: {{ $cfg.external_url | default "http://example.com" }}
       internal_url: {{ $cfg.internal_url | default "http://homeassistant.local" }}
+
+    automation: !include automations.yaml
+    script: !include scripts.yaml
+    scene: !include scenes.yaml
+  automations.yaml: |
+    []
+  scripts.yaml: |
+    {}
+  scenes.yaml: |
+    []
+  .storage-core.config_entries: |
+    {
+      "version": 1,
+      "minor_version": 5,
+      "key": "core.config_entries",
+      "data": {
+        "entries": [
+          {"created_at":"2025-11-04T21:43:49.646809+00:00","data":{"broker":"app-mosquitto.default.svc.cluster.local","port":1883},"disabled_by":null,"discovery_keys":{},"domain":"mqtt","entry_id":"01K98D704E7W0THGS9GZN8R8VA","minor_version":2,"modified_at":"2025-11-04T21:43:49.646811+00:00","options":{},"pref_disable_new_entities":false,"pref_disable_polling":false,"source":"user","subentries":[],"title":"app-mosquitto.default.svc.cluster.local","unique_id":null,"version":1}
+        ]
+      }
+    }

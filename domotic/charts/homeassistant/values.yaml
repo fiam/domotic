@@ -5,6 +5,14 @@
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
 
+configSeed:
+  enabled: true
+  image:
+    repository: busybox
+    tag: "1.36.1"
+    pullPolicy: IfNotPresent
+  resources: {}
+
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
   repository: "homeassistant/home-assistant"
@@ -162,12 +170,6 @@ affinity: {}
 
 config:
   name: Home
-  latitude: 0.0
-  longitude: 0.0
-  elevation: 0
-  unit_system: metric
-  currency: USD
-  country: US
   external_url: http://example.com
   internal_url: http://homeassistant.local
   volume:

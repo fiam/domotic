@@ -1,7 +1,2 @@
 1. Open homeassistant by going to {{ .Values.homeassistant.config.internal_url }}
 2. Create an admin username and password
-3. Go to {{ .Values.homeassistant.config.internal_url }}/config/integrations/dashboard
-4. Click "+ Add Integration"
-5. Select MQTT -> MQTT
-6. Enter the broker URL: {{ .Release.Name }}-mosquitto.{{ .Release.Namespace }}.svc.cluster.local
-7. Click Submit
