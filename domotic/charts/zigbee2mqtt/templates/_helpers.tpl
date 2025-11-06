@@ -60,3 +60,26 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/* Convert a hex string into a YAML array of decimal bytes. */}}
+{{- define "hex.toBytes" -}}
+{{- $value := .value -}}
+{{- $requiredLength := .requiredLength -}}
+{{- if eq $value "GENERATE" -}}
+  {{- $value | quote }}
+{{- else -}}
+    {{- $isHex := regexMatch "^[0-9a-fA-F]+$" $value -}}
+    {{- if not $isHex -}}
+      {{- fail (printf "hex.toBytes: value '%s' is not a valid hex string" $value) -}}
+    {{- end -}}
+    {{- if ne (len $value) (mul $requiredLength 2) -}}
+      {{- fail (printf "hex.toBytes: value length %d does not match required length %d" (len $value) $requiredLength) -}}
+    {{- end -}}
+    {{- $pairs := regexFindAll "[0-9a-fA-F]{2}" $value -1 -}}
+    {{- $sep := "" -}}
+    [{{- range $p := $pairs -}}
+      {{- printf "%s0x%s" $sep $p -}}
+      {{- $sep = ", " -}}
+    {{- end -}}]
+{{- end -}}
+{{- end -}}

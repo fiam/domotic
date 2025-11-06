@@ -53,13 +53,13 @@ variable "zigbee_pan_id" {
   description = "Zigbee PAN ID for the network"
 }
 
-variable "zigbee_extended_pan_id" {
+variable "zigbee_ext_pan_id" {
   type        = string
-  description = "Zigbee Extended PAN ID for the network"
+  description = "Zigbee Extended PAN ID for the network as a 16-character hexadecimal string"
 }
 
 variable "zigbee_network_key" {
   type        = string
-  description = "Zigbee Network Key for the network"
+  description = "Zigbee Network Key for the network as a 32-character hexadecimal string"
   sensitive   = true
 }

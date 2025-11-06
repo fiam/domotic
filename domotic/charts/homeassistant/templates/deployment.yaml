@@ -46,7 +46,8 @@ spec:
           args:
             - |
               set -eu
-              for rel in automations.yaml scripts.yaml scenes.yaml .storage/core.config_entries; do
+              files="automations.yaml scripts.yaml scenes.yaml .storage/core.config_entries"
+              for rel in $files; do
                 echo "Processing default file: ${rel}"
                 file="/defaults/$(echo "$rel" | tr '/' '-')"
                 target="/config/${rel}"

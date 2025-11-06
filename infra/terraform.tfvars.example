@@ -1,2 +1,16 @@
-# Cloudflare provider configuration
-# cloudflare_api_token = "your-token"
+# Cloudflare configuration
+cloudflare_account_id              = "<account_id>"
+# Generate an API Token (not an account token) at https://dash.cloudflare.com/profile/api-tokens
+# With at least the following permissions:
+# Cloudflare Tunnel:Edit, Cloudflare Tunnel:Read
+# Zone:Read, DNS:Read, DNS:Edit
+cloudflare_api_token               = "<token>"
+cloudflare_homeassistant_subdomain = "homeassistant"
+cloudflare_tunnel_name             = "homeassistant"
+cloudflare_domain                  = "example.com"
+serial_port                        = "/dev/ttyS0"
+serial_adapter                     = "ember"
+zigbee_channel                     = 25
+zigbee_pan_id                      = 6677
+zigbee_ext_pan_id                  = "123456789ABCDEF0"
+zigbee_network_key                 = "123456789ABCDEF0123456789ABCDEF0"

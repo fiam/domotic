@@ -23,10 +23,6 @@ data:
     advanced:
         log_level: debug
         {{ with $cfg.pan_id }}pan_id: {{ . }}{{- end }}
-        {{ with $cfg.ext_pan_id }}ext_pan_id:
-            {{- . | toYaml | nindent 12 }}
-        {{- end }}
-        {{ with $cfg.network_key }}network_key:
-            {{- . | toYaml | nindent 12 }}
-        {{- end }}
+        {{ with $cfg.ext_pan_id }}ext_pan_id: {{ include "hex.toBytes" (dict "value" . "requiredLength" 8) }}{{ end }}
+        {{ with $cfg.network_key }}network_key: {{ include "hex.toBytes" (dict "value" . "requiredLength" 16) }}{{- end }}
         {{ with $cfg.channel }}channel: {{ . | toYaml }}{{- end }}
