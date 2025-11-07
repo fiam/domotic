@@ -28,3 +28,6 @@ spec:
 # Omitting the hostname means this gateway will accept all hostnames
 #    hostname: "*.example.com"
 EOF
+
+
+kubectl apply -k zstackmulator

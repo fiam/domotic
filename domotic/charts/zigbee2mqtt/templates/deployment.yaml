@@ -15,6 +15,7 @@ spec:
     metadata:
       {{- with .Values.podAnnotations }}
       annotations:
+        configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
@@ -89,19 +90,23 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           volumeMounts:
+          {{- if hasPrefix "/dev/" .Values.config.serial.port }}
             - name: serial
               mountPath: {{ .Values.config.serial.port }}
               readOnly: false
+          {{- end }}
             - name: zigbee2mqtt-data
               mountPath: /app/data
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if hasPrefix "/dev/" .Values.config.serial.port }}
         - name: serial
           hostPath:
             path: {{ .Values.config.serial.port }}
             type: CharDevice
+        {{- end }}
         - name: zigbee2mqtt-data
           {{- if and .Values.persistence.enabled .Values.persistence.existingClaim }}
           persistentVolumeClaim:

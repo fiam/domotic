@@ -25,8 +25,12 @@ resource "helm_release" "_" {
       value = var.serial_port
     },
     {
+      name  = "zigbee2mqtt.config.serial.adapter",
+      value = var.serial_adapter
+    },
+    {
       name  = "zigbee2mqtt.config.mqtt.server",
-      value = var.serial_port
+      value = local.mqtt_server
     },
     {
       name  = "zigbee2mqtt.config.pan_id",

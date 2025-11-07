@@ -1,0 +1,16 @@
+homeassistant:
+  enabled: false
+data_path: /app/data
+mqtt:
+  base_topic: zigbee2mqtt
+  server: mqtt://mosquitto:1883
+serial:
+  adapter: zstack
+  port: tcp://fakezstack:6638
+  baudrate: 115200
+advanced:
+  log_level: info
+frontend:
+  enabled: true
+  port: 8080
+version: 4

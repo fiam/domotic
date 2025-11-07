@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zstackmulator
+  labels:
+    app: zstackmulator
+    app.kubernetes.io/name: zstackmulator
+    app.kubernetes.io/component: adapter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zstackmulator
+  template:
+    metadata:
+      labels:
+        app: zstackmulator
+    spec:
+      containers:
+        - name: zstackmulator
+          image: ghcr.io/astral-sh/uv:debian
+          imagePullPolicy: IfNotPresent
+          command: ["uv", "run", "/app/zstackmulator.py", "--host", "0.0.0.0", "--port", "6638", "--log-level", "INFO"]
+          ports:
+            - containerPort: 6638
+              name: zstack
+              protocol: TCP
+          volumeMounts:
+            - name: script
+              mountPath: /app
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: zstack
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: zstack
+            initialDelaySeconds: 10
+            periodSeconds: 20
+      volumes:
+        - name: script
+          configMap:
+            name: zstackmulator

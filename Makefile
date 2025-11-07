@@ -12,21 +12,3 @@ help:
 .PHONY: kind
 kind:
 	./kind-create.sh
-
-.PHONY: helm-dev
-helm-dev:
-	helm upgrade --install dev ./domotic --create-namespace --wait --atomic -f values.yaml
-
-
-.PHONY: secrets
-secrets:
-	@echo "🔐 Creating/updating secrets in namespace: $(NAMESPACE)"
-	@for f in secret.*; do \
-		name=$${f#secret.}; \
-		echo "→ Applying secret '$${name}' from file '$${f}'"; \
-		kubectl create secret generic "$${name}" \
-			--from-env-file="$${f}" \
-			-n $(NAMESPACE) \
-			--dry-run=client -o yaml | kubectl apply -f -; \
-	done
-	@echo "✅ All secrets applied successfully."

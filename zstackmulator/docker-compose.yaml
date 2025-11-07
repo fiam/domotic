@@ -1,0 +1,30 @@
+services:
+  zstackmulator:
+    image: ghcr.io/astral-sh/uv:debian
+    command: ["uv", "run", "/app/zstackmulator.py", "--host", "0.0.0.0", "--port", "6638", "--log-level", "DEBUG"]
+    volumes:
+      - ./zstackmulator.py:/app/zstackmulator.py:ro
+    ports:
+      - "6638:6638"
+    restart: unless-stopped
+
+  zigbee2mqtt:
+    image: ghcr.io/koenkk/zigbee2mqtt
+    depends_on:
+      - zstackmulator
+      - mosquitto
+    volumes:
+      - ./zigbee2mqtt.yaml:/app/data/configuration.yaml:rw
+    ports:
+      - "8081:8080"
+    environment:
+      - TZ=UTC
+    restart: unless-stopped
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
