@@ -63,3 +63,18 @@ variable "zigbee_network_key" {
   description = "Zigbee Network Key for the network as a 32-character hexadecimal string"
   sensitive   = true
 }
+
+variable "http_route_parent_refs" {
+  description = "List of Gateway parentRefs for the HTTPRoute. Each item may include name, namespace, and sectionName."
+  type = list(object({
+    name         = string
+    namespace    = optional(string)
+    section_name = optional(string)
+  }))
+  default = [
+    {
+      name         = "gateway"
+      section_name = "http"
+    }
+  ]
+}

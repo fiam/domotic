@@ -1,6 +1,13 @@
 locals {
   helm_release_name = "app"
   mqtt_server       = "${local.helm_release_name}-mosquitto.${var.kubernetes_namespace}.svc.cluster.local"
+  http_route_parent_refs = [
+    for p in var.http_route_parent_refs : {
+      name        = p.name
+      namespace   = try(p.namespace, null)
+      sectionName = try(p.section_name, null)
+    }
+  ]
 }
 resource "helm_release" "_" {
   depends_on = [kubernetes_secret.cloudflared_tunnel_token_secret]
@@ -10,6 +17,23 @@ resource "helm_release" "_" {
   #    atomic = true
   create_namespace = true
   cleanup_on_fail  = true
+
+  values = [
+    yamlencode({
+      homeassistant = {
+        httpRoute = {
+          enabled    = true
+          parentRefs = local.http_route_parent_refs
+        }
+      },
+      zigbee2mqtt = {
+        httpRoute = {
+          enabled    = true
+          parentRefs = local.http_route_parent_refs
+        }
+      }
+    })
+  ]
 
   set = [
     {
