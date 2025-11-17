@@ -37,8 +37,8 @@ spec:
             - name: TUNNEL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.secret.name }}
-                  key: {{ .Values.secret.key }}
+                  name: {{ .Values.tunnelTokenSecret.name }}
+                  key: {{ .Values.tunnelTokenSecret.key }}
           command:
             # Configures tunnel run parameters
             - cloudflared

@@ -1,0 +1,19 @@
+# Example Helm values for kind (local Kubernetes development)
+# This configuration works with the kind cluster setup created by ./kind-create.sh
+# It uses the zstackmulator emulator for Zigbee development without physical hardware
+
+homeassistant:
+  httpRoute:
+    parentRefs:
+    - name: gateway
+      namespace: default
+
+zigbee2mqtt:
+  httpRoute:
+    parentRefs:
+    - name: gateway
+      namespace: default
+  config:
+    serial:
+      port: tcp://zstackmulator.zstackmulator.svc.cluster.local:6638
+      adapter: zstack

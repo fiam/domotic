@@ -1,0 +1,125 @@
+# ==============================================================================
+# Production Domotic Configuration Example
+# ==============================================================================
+# Full-featured configuration with HTTPRoute, persistence, and resource limits
+
+# Zigbee2MQTT Configuration
+zigbee2mqtt:
+  # References to Terraform-created resources
+  secretRef:
+    name: zigbee-keys
+  configMapRef:
+    name: zigbee-network
+
+  image:
+    tag: "1.35.0"  # Pin to specific version for stability
+
+  config:
+    serial:
+      port: /dev/ttyACM0
+      adapter: ember
+
+    mqtt:
+      server: domotic-mosquitto
+      port: 1883
+
+    frontend:
+      internal_url: "http://zigbee2mqtt.local"
+
+  # Note: Network settings (pan_id, channel) managed by Terraform
+  
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: "local-path"  # Adjust for your cluster
+  
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  httpRoute:
+    enabled: true
+    hostnames:
+      - zigbee2mqtt.local
+    parentRefs:
+      - name: gateway
+        namespace: nginx-gateway
+        sectionName: http
+
+# Home Assistant Configuration  
+homeassistant:
+  image:
+    tag: "2024.11"  # Pin to specific version
+  
+  config:
+    name: "My Smart Home"
+    latitude: 37.7749
+    longitude: -122.4194
+    timezone: "America/Los_Angeles"
+    unit_system: "metric"
+    external_url: "https://homeassistant.example.com"
+    internal_url: "http://homeassistant.local:8123"
+    
+    mqtt:
+      server: domotic-mosquitto
+      port: 1883
+  
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: "local-path"
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+  
+  httpRoute:
+    enabled: true
+    hostnames:
+      - homeassistant.local
+    parentRefs:
+      - name: gateway
+        namespace: nginx-gateway
+        sectionName: http
+
+# Cloudflared Tunnel
+cloudflared:
+  replicaCount: 2  # High availability
+  
+  tunnelTokenSecret:
+    name: cloudflared-tunnel-token
+    key: token
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# Mosquitto MQTT Broker
+mosquitto:
+  image:
+    tag: "2.0.18"  # Pin version
+  
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: "local-path"
+  
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi

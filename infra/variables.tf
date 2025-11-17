@@ -30,51 +30,72 @@ variable "cloudflare_homeassistant_subdomain" {
 variable "kubernetes_namespace" {
   type        = string
   description = "Kubernetes namespace to deploy resources"
-  default     = "default"
+  default     = "domotic"
 }
 
-variable "serial_port" {
+variable "helm_release_name" {
   type        = string
-  description = "Serial port for Zigbee adapter"
+  description = "Helm release name (used for computing service FQDNs)"
+  default     = "domotic"
 }
 
-variable "serial_adapter" {
-  type        = string
-  description = "Serial adapter type for Zigbee adapter"
-}
+# ==============================================================================
+# Zigbee Configuration
+# ==============================================================================
 
-variable "zigbee_channel" {
-  type        = number
-  description = "Zigbee channel for the adapter"
-}
-
-variable "zigbee_pan_id" {
-  type        = number
-  description = "Zigbee PAN ID for the network"
-}
-
-variable "zigbee_ext_pan_id" {
-  type        = string
-  description = "Zigbee Extended PAN ID for the network as a 16-character hexadecimal string"
+variable "generate_zigbee_keys" {
+  description = "Generate new Zigbee keys. Only use on first setup!"
+  type        = bool
+  default     = false
 }
 
 variable "zigbee_network_key" {
+  description = "Zigbee network encryption key (32 hex chars). Required unless generate_zigbee_keys=true."
   type        = string
-  description = "Zigbee Network Key for the network as a 32-character hexadecimal string"
   sensitive   = true
+  default     = null
+
+  validation {
+    condition     = var.zigbee_network_key == null || can(regex("^[0-9A-Fa-f]{32}$", var.zigbee_network_key))
+    error_message = "Network key must be exactly 32 hexadecimal characters."
+  }
 }
 
-variable "http_route_parent_refs" {
-  description = "List of Gateway parentRefs for the HTTPRoute. Each item may include name, namespace, and sectionName."
-  type = list(object({
-    name         = string
-    namespace    = optional(string)
-    section_name = optional(string)
-  }))
-  default = [
-    {
-      name         = "gateway"
-      section_name = "http"
-    }
-  ]
+variable "zigbee_ext_pan_id" {
+  description = "Zigbee extended PAN ID (16 hex chars). Required unless generate_zigbee_keys=true."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.zigbee_ext_pan_id == null || can(regex("^[0-9A-Fa-f]{16}$", var.zigbee_ext_pan_id))
+    error_message = "Extended PAN ID must be exactly 16 hexadecimal characters."
+  }
+}
+
+variable "zigbee_pan_id" {
+  description = "Zigbee PAN ID (0-65535). Protected - changing breaks network."
+  type        = number
+  default     = 6754
+
+  validation {
+    condition     = var.zigbee_pan_id >= 0 && var.zigbee_pan_id <= 65535
+    error_message = "PAN ID must be between 0 and 65535."
+  }
+}
+
+variable "zigbee_channel" {
+  description = "Zigbee channel (11-26). Protected - changing breaks network."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.zigbee_channel >= 11 && var.zigbee_channel <= 26
+    error_message = "Zigbee channel must be between 11 and 26."
+  }
+}
+
+variable "force_update_secrets" {
+  description = "DANGER: Allow updating protected secret keys. This will break your Zigbee network!"
+  type        = bool
+  default     = false
 }

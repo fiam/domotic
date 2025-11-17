@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "zigbee2mqtt.fullname" . }}-config
+  labels:
+    {{- include "zigbee2mqtt.labels" . | nindent 4 }}
+data:
+  configuration.yaml: |
+    {{- $cfg := .Values.config }}
+    {{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.secretRef.name }}
+    {{- $configmap := lookup "v1" "ConfigMap" .Release.Namespace .Values.configMapRef.name }}
+    serial:
+        {{ $cfg.serial | toYaml | nindent 8 }}
+    mqtt:
+        server: mqtt://{{ $cfg.mqtt.server }}:{{ $cfg.mqtt.port }}
+        {{ with $cfg.mqtt.client_id }}client_id: {{ . | toYaml }}{{ end }}
+    frontend:
+        enabled: true
+        package: zigbee2mqtt-windfront
+        port: 8080
+        host: 0.0.0.0
+        url: {{ $cfg.frontend.internal_url }}
+    homeassistant:
+        enabled: true
+    advanced:
+        log_level: debug
+        {{- if and $configmap $configmap.data }}
+        {{- with (index $configmap.data "pan_id") }}
+        pan_id: {{ . }}
+        {{- end }}
+        {{- with (index $configmap.data "channel") }}
+        channel: {{ . }}
+        {{- end }}
+        {{- end }}
+        {{- if and $secret $secret.data }}
+        {{- with (index $secret.data "ext_pan_id" | b64dec) }}
+        ext_pan_id: {{ include "hex.toBytes" (dict "value" . "requiredLength" 8) }}
+        {{- end }}
+        {{- with (index $secret.data "network_key" | b64dec) }}
+        network_key: {{ include "hex.toBytes" (dict "value" . "requiredLength" 16) }}
+        {{- end }}
+        {{- end }}

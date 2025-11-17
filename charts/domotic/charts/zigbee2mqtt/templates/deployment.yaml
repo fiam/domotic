@@ -13,11 +13,16 @@ spec:
       {{- include "zigbee2mqtt.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        {{- $configmap := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "zigbee2mqtt.fullname" .)) }}
+        {{- if $configmap }}
+        configmap.resourceVersion: {{ $configmap.metadata.resourceVersion | quote }}
+        {{- else }}
         configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "zigbee2mqtt.labels" . | nindent 8 }}
         {{- with .Values.podLabels }}
@@ -45,15 +50,10 @@ spec:
             - |
               set -eu
               mkdir -p /app/data
-              if [ ! -f /app/data/configuration.orig.yaml ]; then
-                echo "No config found, initializing"
-                cp /defaults/configuration.yaml /app/data/configuration.yaml
-                cp /defaults/configuration.yaml /app/data/configuration.orig.yaml
-              elif ! cmp -s /defaults/configuration.yaml /app/data/configuration.orig.yaml; then
-                echo "Default config changed, copying"
-                cp /defaults/configuration.yaml /app/data/configuration.yaml
-                cp /defaults/configuration.yaml /app/data/configuration.orig.yaml
-              fi
+              # Always copy the latest configuration from configmap
+              echo "Updating configuration from configmap"
+              cp /defaults/configuration.yaml /app/data/configuration.yaml
+              cp /defaults/configuration.yaml /app/data/configuration.orig.yaml
           volumeMounts:
             - name: zigbee2mqtt-data
               mountPath: /app/data

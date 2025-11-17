@@ -1,9 +1,19 @@
-# Default values for homeassistant.
+# Default values for zigbee2mqtt.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
 # This will set the replicaset count more information can be found here: https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
 replicaCount: 1
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+  selector: {}
 
 configSeed:
   enabled: true
@@ -15,11 +25,11 @@ configSeed:
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
-  repository: "homeassistant/home-assistant"
+  repository: koenkk/zigbee2mqtt
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "stable"
+  tag: "latest"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []
@@ -96,7 +106,7 @@ httpRoute:
     # namespace: default
   # Hostnames matching HTTP header.
   hostnames:
-  - homeassistant.local
+  - zigbee2mqtt.local
   # List of rules and filters applied.
   rules:
   - matches:
@@ -168,12 +178,26 @@ tolerations: []
 
 affinity: {}
 
-config:
-  name: Home
-  external_url: http://example.com
-  internal_url: http://homeassistant.local
-  volume:
-    size: 10Gi
+# Reference to Terraform-created Kubernetes resources
+# Secret: Contains sensitive network keys (network_key, ext_pan_id)
+secretRef:
+  name: "zigbee-keys"
 
-logger:
-  default: info
+# ConfigMap: Contains non-sensitive network config (pan_id, channel)
+configMapRef:
+  name: "zigbee-network"
+
+config:
+  serial:
+    port: /dev/ttyUSB0
+    adapter: ember
+  mqtt:
+    server: mosquitto.local
+    port: 1883
+  frontend:
+    internal_url: "http://zigbee2mqtt.local"
+
+# IMPORTANT: Do NOT configure Zigbee network settings here!
+# All network configuration (pan_id, channel, network_key, ext_pan_id) is managed by Terraform
+# and loaded from the ConfigMap and Secret referenced above.
+# Changing these in Terraform requires force_update_secrets=true as they're PROTECTED.

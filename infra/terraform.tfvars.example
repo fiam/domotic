@@ -1,16 +1,63 @@
-# Cloudflare configuration
-cloudflare_account_id              = "<account_id>"
-# Generate an API Token (not an account token) at https://dash.cloudflare.com/profile/api-tokens
-# With at least the following permissions:
-# Cloudflare Tunnel:Edit, Cloudflare Tunnel:Read
-# Zone:Read, DNS:Read, DNS:Edit
-cloudflare_api_token               = "<token>"
+# ==============================================================================
+# Domotic Infrastructure Configuration
+# ==============================================================================
+# Copy this file to terraform.tfvars and fill in your values
+
+# ==============================================================================
+# Cloudflare Configuration
+# ==============================================================================
+
+# Get your API token from: https://dash.cloudflare.com/profile/api-tokens
+# Required scopes:
+#   - Cloudflare Tunnel:Edit, Cloudflare Tunnel:Read
+#   - Zone:Read, DNS:Read, DNS:Edit
+cloudflare_api_token = "<your-cloudflare-api-token>"
+
+# Your Cloudflare account ID (found in dashboard)
+cloudflare_account_id = "<your-account-id>"
+
+# Domain managed by Cloudflare
+cloudflare_domain = "example.com"
+
+# Subdomain for Home Assistant (will create homeassistant.example.com)
 cloudflare_homeassistant_subdomain = "homeassistant"
-cloudflare_tunnel_name             = "homeassistant"
-cloudflare_domain                  = "example.com"
-serial_port                        = "/dev/ttyS0"
-serial_adapter                     = "ember"
-zigbee_channel                     = 25
-zigbee_pan_id                      = 6677
-zigbee_ext_pan_id                  = "123456789ABCDEF0"
-zigbee_network_key                 = "123456789ABCDEF0123456789ABCDEF0"
+
+# Friendly name for the tunnel
+cloudflare_tunnel_name = "domotic-tunnel"
+
+# ==============================================================================
+# Kubernetes Configuration
+# ==============================================================================
+
+# Namespace where Helm charts will be deployed
+kubernetes_namespace = "domotic"
+
+# Helm release name (affects service DNS names)
+helm_release_name = "domotic"
+
+# ==============================================================================
+# Zigbee Configuration
+# ==============================================================================
+
+# Option A: Generate keys on first run (recommended for new setups)
+# Uncomment this ONLY for initial setup, then comment out and add generated keys below
+# generate_zigbee_keys = true
+
+# Option B: Provide existing keys (for migrations or after first generation)
+# After first run with generate_zigbee_keys=true, get values from:
+#   terraform output -json generated_keys
+zigbee_network_key = "123456789ABCDEF0123456789ABCDEF0"  # 32 hex characters
+zigbee_ext_pan_id  = "123456789ABCDEF0"                  # 16 hex characters
+
+# Network settings - PROTECTED (changing breaks paired devices)
+# These are stored in a ConfigMap (non-sensitive) but still protected
+zigbee_pan_id  = 6754  # PAN ID (0-65535)
+zigbee_channel = 15    # Zigbee channel (11-26, avoid WiFi overlap: use 15, 20, or 25)
+
+# ==============================================================================
+# Safety Settings (Advanced)
+# ==============================================================================
+
+# DANGER: Only set to true if you intentionally want to change network keys
+# This will break your entire Zigbee network and require re-pairing all devices!
+# force_update_secrets = false

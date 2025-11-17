@@ -1,3 +1,33 @@
+# macOS
 .DS_Store
+
+# Helm
 /values.yaml
+/values-*.yaml
+!/examples/values-*.yaml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+.terraform.lock.hcl
+infra/helm-values.yaml
+
+# Secrets
 /secret.*
+*.pem
+*.key
+*.crt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.log

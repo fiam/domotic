@@ -25,6 +25,9 @@ spec:
   - name: http
     port: 80
     protocol: HTTP
+    allowedRoutes:
+      namespaces:
+        from: All
 # Omitting the hostname means this gateway will accept all hostnames
 #    hostname: "*.example.com"
 EOF

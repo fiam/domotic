@@ -1,0 +1,50 @@
+# ==============================================================================
+# Minimal Domotic Configuration Example
+# ==============================================================================
+# This is the bare minimum configuration to get started
+# Assumes: Terraform has already created secrets
+
+# Zigbee2MQTT Configuration
+zigbee2mqtt:
+  # References to Terraform-created resources
+  secretRef:
+    name: zigbee-keys           # Sensitive keys (from Terraform)
+  configMapRef:
+    name: zigbee-network        # Network config (from Terraform)
+
+  config:
+    serial:
+      port: /dev/ttyUSB0         # Change to your device
+      adapter: ember              # Change to your adapter type (ember, deconz, zigate, etc.)
+
+    mqtt:
+      server: domotic-mosquitto   # Service name from Helm release
+      port: 1883
+
+  # Note: Zigbee network settings (pan_id, channel, network_key, ext_pan_id)
+  # are managed by Terraform and loaded from the Secret/ConfigMap above
+
+# Home Assistant Configuration  
+homeassistant:
+  config:
+    name: "Home"
+    latitude: 40.7128
+    longitude: -74.0060
+    external_url: "https://homeassistant.example.com"  # Managed by Cloudflare Tunnel
+    internal_url: "http://homeassistant.local:8123"
+    
+    mqtt:
+      server: domotic-mosquitto
+      port: 1883
+
+# Cloudflared Tunnel
+cloudflared:
+  tunnelTokenSecret:
+    name: cloudflared-tunnel-token  # Created by Terraform
+    key: token
+
+# Mosquitto MQTT Broker
+mosquitto:
+  persistence:
+    enabled: true
+    size: 1Gi

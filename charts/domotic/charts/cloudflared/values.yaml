@@ -42,6 +42,8 @@ tolerations: []
 
 affinity: {}
 
-secret:
-  name: cloudflared
-  key: tunnel_token
+# Reference to Kubernetes secret containing Cloudflare Tunnel token
+# This secret should be created by Terraform (infra/cloudflare.tf)
+tunnelTokenSecret:
+  name: cloudflared-tunnel-token
+  key: token
