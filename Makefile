@@ -17,7 +17,7 @@ help: ## Show this help message
 
 .PHONY: kind
 kind: ## Create kind cluster with Gateway API
-	./kind-create.sh
+	./scripts/kind-create.sh
 
 .PHONY: kind-destroy
 kind-destroy: ## Destroy kind cluster

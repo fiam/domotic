@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+repository_root="$(dirname "$script_dir")"
+
 cat <<EOF | kind create cluster --name domotic --config=-
 apiVersion: kind.x-k8s.io/v1alpha4
 kind: Cluster
@@ -41,4 +46,4 @@ spec:
 EOF
 
 # Install zstackmulator (Zigbee emulator for development)
-kubectl apply -k zstackmulator
+kubectl apply -k "$repository_root/zstackmulator"

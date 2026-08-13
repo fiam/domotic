@@ -1,5 +1,5 @@
 # Example Helm values for kind (local Kubernetes development)
-# This configuration works with the kind cluster setup created by ./kind-create.sh
+# This configuration works with the kind cluster setup created by ./scripts/kind-create.sh
 # It uses the zstackmulator emulator for Zigbee development without physical hardware
 
 homeassistant:
