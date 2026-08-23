@@ -44,24 +44,25 @@ The docker-compose setup is for development only. For production, deploy to Kube
 
 ### Kubernetes Deployment
 
-Deploy using Kustomize (built into kubectl):
+From the repository root, use the development Taskfile. It defaults to the
+`kind-domotic` context:
 
 ```bash
 # Deploy
-make install
+task dev:emulator:install
 # or manually:
-kubectl apply -k .
+kubectl --context=kind-domotic apply -k zstackmulator
 
 # Check status
-make status
+task dev:emulator:status
 
 # View logs
-make logs
+task dev:emulator:logs
 
 # Remove
-make uninstall
+task dev:emulator:uninstall
 # or manually:
-kubectl delete -k .
+kubectl --context=kind-domotic delete -k zstackmulator
 ```
 
 The deployment uses the `ghcr.io/astral-sh/uv:debian` image (no custom container needed)

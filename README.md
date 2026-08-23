@@ -8,6 +8,7 @@ This project separates infrastructure management (Terraform) from application de
 
 **Terraform (infra/)** - Run once, update rarely
 - Creates Cloudflare Tunnel + DNS
+- Creates the protected R2 backup bucket and Home Assistant credentials
 - Generates/manages Zigbee network keys (with protection)
 - Creates Kubernetes secrets
 - Manages external dependencies
@@ -17,81 +18,223 @@ This project separates infrastructure management (Terraform) from application de
 - References Terraform-created secrets
 - Update frequently (version upgrades, config changes)
 
-## Quick Start
+## Installation
 
-### Prerequisites
+For a new single-node k3s host, complete [DEPLOYMENT.md](DEPLOYMENT.md) first.
+It covers k3s, remote cluster access, Traefik Gateway API, and the `.local`
+names advertised on the LAN. Run the repository tasks from the administrator
+machine whose default kubeconfig contains the `domotic` context.
 
-- Kubernetes cluster (k3s, Kind, or any distribution)
-- `kubectl` configured
-- `terraform` >= 1.5.0
-- `helm` >= 3.0
-- Cloudflare account with a domain
-- Zigbee USB adapter
+### 1. Install the workstation tools
 
-### Step 1: Setup Infrastructure with Terraform
+Install `kubectl`, Terraform 1.7 or newer, Helm 3 or newer, Git, and
+[Task](https://taskfile.dev/docs/installation). Backups additionally require
+`age`, `jq`, and the AWS CLI. For Task itself:
 
-```bash
-cd infra
+```sh
+# macOS
+brew install go-task
 
-# Copy and configure variables
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your Cloudflare credentials and settings
-
-# Initialize and apply
-terraform init
-terraform apply
-
-# IMPORTANT: If you generated keys, save them immediately!
-terraform output -json generated_keys > ../KEYS_BACKUP.json
-chmod 600 ../KEYS_BACKUP.json
-
-# Generate Helm values from Terraform outputs
-terraform output -raw helm_values_yaml > ../terraform-values.yaml
+# Debian or Ubuntu
+curl -1sLf 'https://dl.cloudsmith.io/public/task/task/setup.deb.sh' | sudo -E bash
+sudo apt-get install --yes task
 ```
 
-### Step 2: Deploy with Helm
+You also need a Cloudflare account with a managed domain and, outside the Kind
+development environment, a supported Zigbee adapter.
 
-```bash
-cd ..
+### 2. Clone and create private configuration
 
-# Create your custom values
-cat > my-values.yaml <<'EOF'
-zigbee2mqtt:
-  config:
-    serial:
-      port: /dev/ttyUSB0
-      adapter: ember
+```sh
+git clone https://github.com/fiam/domotic.git
+cd domotic
 
-homeassistant:
-  config:
-    name: "My Home"
-    latitude: 37.7749
-    longitude: -122.4194
-EOF
-
-# Install the chart
-helm install domotic ./charts/domotic \
-  --namespace domotic \
-  --create-namespace \
-  -f terraform-values.yaml \
-  -f my-values.yaml
-
-# Check status
-kubectl -n domotic get pods
+cp infra/terraform.tfvars.example infra/terraform.tfvars
+cp examples/values-production.yaml values.yaml
 ```
 
-### Step 3: Access Your Services
+Edit `infra/terraform.tfvars` with the Cloudflare account, domain, and Zigbee
+network configuration. For a new Home Assistant instance, optionally configure
+the first owner account; its password goes only into the ignored variables,
+Terraform state, and a Kubernetes Secret:
+
+```hcl
+homeassistant_bootstrap_mode = "seed"
+homeassistant_onboarding = {
+  name     = "Home Administrator"
+  username = "admin"
+  password = "replace-with-a-long-unique-password"
+  language = "en"
+}
+```
+
+The Helm hook uses Home Assistant's supported onboarding APIs to create the
+owner and finish first-boot onboarding, then revokes its temporary login token.
+It preserves completed onboarding on later deployments. Change passwords
+through Home Assistant after the first boot; changing this Terraform value does
+not rotate an existing account.
+
+When restoring a native Home Assistant backup onto a blank volume, use
+`homeassistant_bootstrap_mode = "restore"` and omit the owner block until the
+restore finishes. This leaves Home Assistant's **Upload backup** onboarding
+path available. Switching back to `seed` afterward does not overwrite restored
+configuration, storage, automations, scripts, or scenes.
+
+Edit `values.yaml` with the serial device, adapter type,
+Home Assistant settings, storage, and route parent references described in
+[the k3s guide](DEPLOYMENT.md#6-attach-the-application-routes-to-traefik).
+Both files are ignored by Git, so pulling upstream changes does not overwrite
+local configuration. Do not put secrets in a tracked example file.
+
+List the available workflows at any time:
+
+```sh
+task --list
+```
+
+### 3. Plan and deploy
+
+The tasks default to the `domotic` kubeconfig context. Set `KUBE_CONTEXT` on a
+command if yours has a different name.
+
+```sh
+task check
+task infra:plan KUBE_CONTEXT=domotic
+task infra:apply KUBE_CONTEXT=domotic
+task helm:deploy KUBE_CONTEXT=domotic
+task helm:status KUBE_CONTEXT=domotic
+```
+
+`task infra:init` creates the `terraform-state` namespace when needed. Applying
+Terraform also generates the ignored `infra/helm-values.yaml`; `task
+helm:deploy` combines that generated file with the private root `values.yaml`
+using `helm upgrade --install`.
+
+The first apply works on an empty namespace. After every successful apply, the
+infrastructure task captures the live Zigbee keys into the ignored,
+mode-0600 `infra/zigbee-keys.tfvars.json`. Future plans load that file after the
+main variables file, so generated keys automatically become explicit,
+restorable Terraform inputs without appearing in terminal output.
+
+The encrypted R2 archive includes both this portable variable file and the live
+Kubernetes Secret and ConfigMap. The portable file records PAN ID and channel
+as recovery guards: they do not override the main variables, but Terraform
+blocks a mismatch unless a network change is explicitly forced. To reconstruct
+the portable file from a restored archive:
+
+```sh
+task backup:restore OBJECT=<object-key>
+task keys:import SOURCE=restore/<backup-directory>
+```
+
+`task deploy` is the convenient single command for routine infrastructure and
+application updates.
+
+Component tasks also work locally. For example, `cd infra && task plan` is the
+same workflow as `task infra:plan` from the repository root.
+
+### 4. Access the services
 
 - **External (Internet)**: https://homeassistant.example.com (via Cloudflare Tunnel)
 - **Internal (LAN)**: http://homeassistant.local (via HTTPRoute/Gateway)
 - **Zigbee2MQTT UI**: http://zigbee2mqtt.local
 
+### 5. Back up configuration and keys to R2
+
+Terraform can provision a protected Cloudflare R2 bucket, and the repository's
+backup task encrypts configuration, Terraform state, and live Kubernetes
+secrets locally with age before uploading them:
+
+```sh
+task backup
+task backup:list
+```
+
+Follow [BACKUP.md](BACKUP.md) first to configure the bucket, account token ID,
+and an independently stored age identity. Terraform derives one R2 credential
+pair from the same account token and configures Home Assistant's official R2
+backup location on a fresh installation. The repository backup workflow never
+uploads plaintext secrets and restores into an ignored staging directory
+without replacing active files.
+
+## Development with Kind
+
+Kind is development tooling, not the production deployment path. Its Taskfile
+and manifests live under `dev/` and it installs the Zigbee coordinator emulator:
+
+```sh
+task dev:create
+task dev:hosts:install
+task dev:status
+task dev:destroy
+```
+
+The hosts task adds only a marked block mapping the two development HTTPRoute
+names to `127.0.0.1`; it leaves every other `/etc/hosts` entry untouched and
+saves the previous file as `/etc/hosts.domotic.bak`. Kind publishes its Gateway
+on port 8080, so open `http://homeassistant.local:8080` and
+`http://zigbee2mqtt.local:8080`. Remove the block with `task
+dev:hosts:remove`.
+
+Set `local_http_hostnames` in the selected Terraform variables file to change
+the two HTTPRoute hostnames. For Kind, also set `local_http_urls` with port
+8080 so Home Assistant and Zigbee2MQTT publish accurate client-facing URLs.
+Pass the same hostnames when configuring development hosts:
+
+```hcl
+local_http_urls = {
+  homeassistant = "http://homeassistant.local:8080"
+  zigbee2mqtt   = "http://zigbee2mqtt.local:8080"
+}
+```
+
+```sh
+task dev:hosts:install \
+  HOMEASSISTANT_HOSTNAME=ha.test \
+  ZIGBEE2MQTT_HOSTNAME=zigbee.test
+```
+
+`task deploy-dev` creates the cluster and runs the Terraform and Helm layers
+against `kind-domotic`; it still requires the configured Cloudflare variables.
+The NGINX Gateway Fabric version is pinned in `dev/Taskfile.yml` so its chart and
+Gateway API definitions stay compatible.
+
+For an isolated end-to-end Cloudflare test, use a separate ignored variables
+file and state namespace. Give it distinct tunnel, hostname, bucket, namespace,
+and release names, then run:
+
+```sh
+task dev:create CLUSTER_NAME=kind-ha KUBE_CONTEXT=kind-kind-ha
+task dev:hosts:install
+task infra:apply \
+  KUBE_CONTEXT=kind-kind-ha \
+  STATE_NAMESPACE=kind-ha-terraform-state \
+  TF_VARS_FILE=kind-ha.tfvars \
+  TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
+  HELM_VALUES_FILE=helm-values-kind-ha.yaml
+task helm:deploy \
+  KUBE_CONTEXT=kind-kind-ha \
+  RELEASE_NAME=kind-ha \
+  NAMESPACE=kind-ha \
+  TERRAFORM_VALUES_FILE=../../infra/helm-values-kind-ha.yaml \
+  VALUES_FILE=../../examples/values-kind.yaml
+```
+
+Destroy the Terraform-managed Cloudflare resources before deleting the Kind
+cluster, because the test state is stored inside that cluster. The R2 bucket's
+destruction guard requires preserving and deliberately deleting its objects
+before removing the bucket.
+
 ## Project Structure
 
 ```
 domotic/
+├── Taskfile.yml              # Repository-wide workflows
+├── BACKUP.md                 # Encrypted Cloudflare R2 backup and recovery
+├── backup.env.example        # Private backup-client configuration template
 ├── charts/domotic/          # Helm chart (user-facing)
 │   ├── Chart.yaml
+│   ├── Taskfile.yml          # Helm lifecycle and validation
 │   ├── values.yaml          # Default values
 │   └── charts/              # Sub-charts
 │       ├── homeassistant/
@@ -100,17 +243,25 @@ domotic/
 │       └── cloudflared/
 │
 ├── infra/                   # Terraform infrastructure
+│   ├── Taskfile.yml          # State, plan, apply, and validation
 │   ├── secrets.tf           # Protected Zigbee key management
 │   ├── cloudflare.tf        # Tunnel + DNS configuration
+│   ├── r2.tf                # Optional protected R2 backup bucket
 │   ├── kubernetes.tf        # K8s secrets
 │   ├── variables.tf         # Input variables
 │   ├── outputs.tf           # Outputs for Helm
 │   └── terraform.tfvars.example
 │
+├── dev/                     # Kind-only development environment
+│   ├── Taskfile.yml
+│   ├── kind.yaml
+│   └── gateway.yaml
+│
 ├── examples/                # Example configurations
 │   ├── values-minimal.yaml
 │   └── values-production.yaml
 │
+├── scripts/                 # Host, cluster, and R2 backup helpers
 └── README.md
 ```
 
@@ -156,36 +307,34 @@ zigbee_channel = 15      # Optional: customize channel
 ```
 
 ```bash
-terraform apply
-
-# SAVE THESE IMMEDIATELY!
-terraform output -json generated_keys
+task infra:apply
 ```
 
-#### After First Run
+The apply captures the generated values in
+`infra/zigbee-keys.tfvars.json` automatically:
 
-Update `terraform.tfvars` with the generated keys and disable generation:
-
-```hcl
-zigbee_network_key = "A1B2C3D4E5F67890A1B2C3D4E5F67890"
-zigbee_ext_pan_id = "1234567890ABCDEF"
-zigbee_pan_id = 6754
-zigbee_channel = 15
-generate_zigbee_keys = false  # Important!
+```sh
+task keys:capture
+task backup
 ```
+
+Do not commit the portable file. The encrypted R2 backup is its off-host copy.
+After restoring a backup into `restore/`, `task keys:import
+SOURCE=restore/<backup-directory>` recreates it without exposing the keys on
+the command line.
 
 ### Protected Configuration Changes
 
 All Zigbee network settings are automatically protected from accidental changes. If you try to modify them, Terraform will block the operation:
 
 ```bash
-$ terraform apply
+$ task infra:apply
 Error: PROTECTED ZIGBEE CONFIGURATION MODIFICATION BLOCKED!
 
 You're trying to change protected Zigbee network settings that will break your network!
 
 SECRET (sensitive keys):
-  • network_key: A1B2C3D4... → WRONG_KE...
+  • network_key would change
 
 CONFIGMAP (network settings):
   • channel: 15 → 20
@@ -204,19 +353,18 @@ This protection applies to:
 
 ### Upgrade Home Assistant Version
 
-```bash
-# Edit your values file
-cat >> my-values.yaml <<'EOF'
+Edit `values.yaml`:
+
+```yaml
 homeassistant:
   image:
-    tag: "2024.12"
-EOF
+    tag: "<tested-version>"
+```
 
-# Upgrade with Helm
-helm upgrade domotic ./charts/domotic \
-  --namespace domotic \
-  -f terraform-values.yaml \
-  -f my-values.yaml
+Then reconcile the release:
+
+```sh
+task helm:deploy
 ```
 
 ### Update Zigbee Channel or PAN ID (PROTECTED!)
@@ -231,8 +379,8 @@ zigbee_channel = 20       # Change to your desired channel
 zigbee_pan_id = 6754      # Change if needed
 force_update_secrets = true  # Required!
 
-cd infra
-terraform apply
+task infra:plan
+task infra:apply
 
 # This will break your Zigbee network!
 # You must re-pair all devices after changing these settings.
@@ -245,11 +393,19 @@ Why protected? Because changing `pan_id` or `channel` changes which network your
 **Warning**: This will break your network and require re-pairing all devices!
 
 ```bash
-# infra/terraform.tfvars
-zigbee_network_key = "NEW_KEY_HERE"
-force_update_secrets = true
+# Preserve the current keys first.
+task keys:capture
+```
 
-terraform apply
+Edit `infra/zigbee-keys.tfvars.json` using JSON syntax, then enable the safety
+override in `infra/terraform.tfvars`:
+
+```hcl
+force_update_secrets = true
+```
+
+```bash
+task infra:apply
 ```
 
 ## Common Operations
@@ -257,24 +413,14 @@ terraform apply
 ### View Protected Resources Status
 
 ```bash
-cd infra
-
 # View Secret status (sensitive keys)
-terraform output zigbee_secret_status
+task infra:outputs -- zigbee_secret_status
 
 # View ConfigMap status (network settings)
-terraform output zigbee_configmap_status
+task infra:outputs -- zigbee_configmap_status
 
-# View all Zigbee configuration
-terraform output -json zigbee_config
-```
-
-### Check Generated Keys
-
-```bash
-terraform output -json generated_keys
-# or from backup:
-cat KEYS_BACKUP.json
+# Refresh the ignored key file without printing its values
+task keys:capture
 ```
 
 ### Update Cloudflare Settings
@@ -283,17 +429,15 @@ cat KEYS_BACKUP.json
 # Edit infra/terraform.tfvars
 cloudflare_homeassistant_subdomain = "ha"
 
-cd infra
-terraform apply
+task infra:apply
 # No Helm changes needed - tunnel auto-updates
 ```
 
 ### View All Services
 
 ```bash
-kubectl -n domotic get all
-kubectl -n domotic get secrets
-kubectl -n domotic get httproutes
+task helm:status
+kubectl --context=domotic -n domotic get secrets
 ```
 
 ## Troubleshooting
@@ -305,14 +449,15 @@ kubectl -n domotic get httproutes
 ls -l /dev/ttyUSB0
 
 # Verify pod sees device
-kubectl -n domotic exec -it deployment/domotic-zigbee2mqtt -- ls -l /dev/ttyUSB0
+kubectl --context=domotic -n domotic exec -it \
+  deployment/domotic-zigbee2mqtt -- ls -l /dev/ttyUSB0
 ```
 
 ### Home Assistant Not Accessible via Tunnel
 
 ```bash
 # Check Cloudflare tunnel status
-kubectl -n domotic logs deployment/domotic-cloudflared
+kubectl --context=domotic -n domotic logs deployment/domotic-cloudflared
 
 # Verify DNS record
 dig homeassistant.example.com
@@ -322,19 +467,21 @@ dig homeassistant.example.com
 
 ```bash
 # Check Mosquitto logs
-kubectl -n domotic logs deployment/domotic-mosquitto
+kubectl --context=domotic -n domotic logs deployment/domotic-mosquitto
 
 # Test connectivity from Home Assistant
-kubectl -n domotic exec -it deployment/domotic-homeassistant -- nc -zv domotic-mosquitto 1883
+kubectl --context=domotic -n domotic exec -it \
+  deployment/domotic-homeassistant -- nc -zv domotic-mosquitto 1883
 ```
 
 ## Contributing
 
 This project uses protected secrets and Terraform-managed infrastructure. When contributing:
 
-1. Never commit `terraform.tfvars` or `KEYS_BACKUP.json`
+1. Never commit `terraform.tfvars` or `zigbee-keys.tfvars.json`
 2. Test with `generate_zigbee_keys = true` in a test cluster
-3. Use example values files as reference
+3. Run `task check` before committing
+4. Use example values files as reference
 
 ## Links
 

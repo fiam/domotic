@@ -5,26 +5,16 @@
 
 # Zigbee2MQTT Configuration
 zigbee2mqtt:
-  # References to Terraform-created resources
-  secretRef:
-    name: zigbee-keys
-  configMapRef:
-    name: zigbee-network
+  # Terraform supplies the Secret/ConfigMap references, MQTT endpoint, and
+  # local HTTPRoute hostname in infra/helm-values.yaml.
 
   image:
-    tag: "1.35.0"  # Pin to specific version for stability
+    tag: "2.13.0"  # Pin this and test upgrades with your coordinator
 
   config:
     serial:
       port: /dev/ttyACM0
       adapter: ember
-
-    mqtt:
-      server: domotic-mosquitto
-      port: 1883
-
-    frontend:
-      internal_url: "http://zigbee2mqtt.local"
 
   # Note: Network settings (pan_id, channel) managed by Terraform
   
@@ -43,17 +33,17 @@ zigbee2mqtt:
   
   httpRoute:
     enabled: true
-    hostnames:
-      - zigbee2mqtt.local
     parentRefs:
-      - name: gateway
-        namespace: nginx-gateway
-        sectionName: http
+      - name: traefik-gateway
+        namespace: kube-system
+        sectionName: web
 
 # Home Assistant Configuration  
 homeassistant:
+  # Terraform supplies external/internal URLs, MQTT, R2, and the local
+  # HTTPRoute hostname in infra/helm-values.yaml.
   image:
-    tag: "2024.11"  # Pin to specific version
+    tag: "2026.8.3"  # Pin this and test upgrades before production use
   
   config:
     name: "My Smart Home"
@@ -61,13 +51,7 @@ homeassistant:
     longitude: -122.4194
     timezone: "America/Los_Angeles"
     unit_system: "metric"
-    external_url: "https://homeassistant.example.com"
-    internal_url: "http://homeassistant.local:8123"
-    
-    mqtt:
-      server: domotic-mosquitto
-      port: 1883
-  
+
   persistence:
     enabled: true
     size: 20Gi
@@ -83,21 +67,15 @@ homeassistant:
   
   httpRoute:
     enabled: true
-    hostnames:
-      - homeassistant.local
     parentRefs:
-      - name: gateway
-        namespace: nginx-gateway
-        sectionName: http
+      - name: traefik-gateway
+        namespace: kube-system
+        sectionName: web
 
 # Cloudflared Tunnel
 cloudflared:
   replicaCount: 2  # High availability
-  
-  tunnelTokenSecret:
-    name: cloudflared-tunnel-token
-    key: token
-  
+
   resources:
     limits:
       cpu: 200m
@@ -109,7 +87,7 @@ cloudflared:
 # Mosquitto MQTT Broker
 mosquitto:
   image:
-    tag: "2.0.18"  # Pin version
+    tag: "2.1.2-alpine"  # Pin this and test upgrades before production use
   
   persistence:
     enabled: true

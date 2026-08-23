@@ -31,7 +31,7 @@ homeassistant:
     latitude: 40.7128
     longitude: -74.0060
     external_url: "https://homeassistant.example.com"  # Managed by Cloudflare Tunnel
-    internal_url: "http://homeassistant.local:8123"
+    internal_url: "http://homeassistant.local"
     
     mqtt:
       server: domotic-mosquitto

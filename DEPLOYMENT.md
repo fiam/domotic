@@ -129,10 +129,14 @@ Traefik is exposed through k3s ServiceLB on the server's ports 80 and 443.
 ## 4. Configure remote `kubectl` and Helm access
 
 The k3s admin kubeconfig grants unrestricted cluster access. Copy it only to a
-trusted administrator machine and keep it private. On that machine, merge it
-into the default kubeconfig under the distinct name `domotic`:
+trusted administrator machine and keep it private. On that machine, clone this
+repository, then merge the server configuration into the default kubeconfig
+under the distinct name `domotic`:
 
 ```sh
+git clone https://github.com/fiam/domotic.git
+cd domotic
+
 ./scripts/k3s-import-context.sh \
   --user your-server-user \
   --context domotic \
@@ -156,6 +160,19 @@ Kubernetes CoreDNS only serves clients inside the cluster, and an `HTTPRoute`
 hostname does not create a LAN DNS or mDNS record. For a single-node home
 server, publish the application names from the host and point them at the IPv4
 address already advertised for the host's primary mDNS name.
+
+The names are configured once in `infra/terraform.tfvars` and passed to both
+Helm HTTPRoutes:
+
+```hcl
+local_http_hostnames = {
+  homeassistant = "homeassistant.local"
+  zigbee2mqtt   = "zigbee2mqtt.local"
+}
+```
+
+Use the labels before `.local` for the Avahi units below. If you customize
+these variables, customize the two unit instances as well.
 
 First, find the interface carrying the default IPv4 route:
 
@@ -258,14 +275,43 @@ avahi-resolve-host-name -4 zigbee2mqtt.local
 
 ## 6. Attach the application routes to Traefik
 
-Add the following to the private Helm values file used for this k3s server:
+On the administrator machine, install the tools listed in
+[README.md](README.md#1-install-the-workstation-tools), then create the two
+private configuration files if you have not already done so:
+
+```sh
+cp infra/terraform.tfvars.example infra/terraform.tfvars
+cp examples/values-production.yaml values.yaml
+```
+
+Fill in `infra/terraform.tfvars`. If enabling R2, give the account API token
+**Workers R2 Storage Read** and **Write**, set `cloudflare_api_token_id`, and
+configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
+`values.yaml`, including the serial adapter and site details.
+
+For a new Home Assistant installation, keep
+`homeassistant_bootstrap_mode="seed"` and optionally configure
+`homeassistant_onboarding` as shown in the variables example. Terraform creates
+a Secret, and a one-shot Helm hook creates the first owner through Home
+Assistant's supported onboarding APIs and completes the remaining onboarding
+steps. Its temporary login token is revoked. It never replaces an existing user
+or password.
+
+For a native Home Assistant backup recovery onto a blank volume, set
+`homeassistant_bootstrap_mode="restore"` before applying and deploying. Do not
+enable owner seeding yet. Open Home Assistant, choose **Upload backup**, and use
+the credentials and emergency-kit key from the backed-up system. After the
+restore succeeds, switching the variable back to `seed` is safe because the
+chart adopts and preserves restored configuration files and `.storage`.
+
+Use the following route attachment for k3s's packaged Traefik. Terraform
+supplies both route hostnames from `local_http_hostnames`, so do not repeat them
+in `values.yaml`:
 
 ```yaml
 homeassistant:
   httpRoute:
     enabled: true
-    hostnames:
-      - homeassistant.local
     parentRefs:
       - name: traefik-gateway
         namespace: kube-system
@@ -274,26 +320,63 @@ homeassistant:
 zigbee2mqtt:
   httpRoute:
     enabled: true
-    hostnames:
-      - zigbee2mqtt.local
     parentRefs:
       - name: traefik-gateway
         namespace: kube-system
         sectionName: web
 ```
 
-After deploying the Domotic chart, verify that Traefik accepted the routes:
+Validate, review, and deploy from the repository root. These tasks explicitly
+use the imported context and do not change your current `kubectl` context:
 
 ```sh
-kubectl -n domotic get httproute
-kubectl -n domotic describe httproute
+task check
+task infra:plan KUBE_CONTEXT=domotic
+task infra:apply KUBE_CONTEXT=domotic
+```
+
+The infrastructure task captures any generated Zigbee keys into the
+ignored `infra/zigbee-keys.tfvars.json`, which subsequent plans load
+automatically. Then install the chart:
+
+```sh
+task helm:deploy KUBE_CONTEXT=domotic
+task helm:status KUBE_CONTEXT=domotic
+```
+
+For later updates, `task deploy KUBE_CONTEXT=domotic` runs both layers in order.
+
+Verify that Traefik accepted the routes:
+
+```sh
+kubectl --context=domotic -n domotic get httproute
+kubectl --context=domotic -n domotic describe httproute
 curl --fail --show-error --head http://homeassistant.local
 curl --fail --show-error --head http://zigbee2mqtt.local
 ```
 
-Continue with the Terraform and Helm steps in [README.md](README.md). Do not
-use `examples/values-kind.yaml` on k3s; it connects Zigbee2MQTT to the
+Do not use `examples/values-kind.yaml` on k3s; it connects Zigbee2MQTT to the
 development-only coordinator emulator.
+
+## 7. Configure encrypted off-host backups
+
+When R2 is enabled before the first Helm deployment, Terraform creates the
+bucket and derived S3 credential Secret, and the chart seeds Home Assistant's
+official Cloudflare R2 backup location. Open **Settings > System > Backups** to
+choose its schedule and retention.
+
+Configure the age identity and local `backup.env` described in
+[BACKUP.md](BACKUP.md), then create and verify the separate encrypted
+configuration backup from the administrator machine:
+
+```sh
+task backup
+task backup:list
+```
+
+This captures the private deployment configuration, Terraform state, and live
+keys without uploading them in plaintext. It does not include PersistentVolume
+data.
 
 ## Firewall notes
 
@@ -342,3 +425,6 @@ Refresh any remote copies of `/etc/rancher/k3s/k3s.yaml` afterward.
 - [Traefik Gateway API provider](https://doc.traefik.io/traefik/providers/kubernetes-gateway/)
 - [Avahi address publication](https://manpages.debian.org/trixie/avahi-utils/avahi-publish-address.1.en.html)
 - [Avahi daemon configuration](https://manpages.debian.org/trixie/avahi-daemon/avahi-daemon.conf.5.en.html)
+- [Cloudflare R2 bucket Terraform resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/r2_bucket)
+- [Cloudflare R2 with the AWS CLI](https://developers.cloudflare.com/r2/examples/aws/aws-cli/)
+- [age installation and usage](https://github.com/FiloSottile/age)

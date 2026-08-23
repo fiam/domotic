@@ -7,11 +7,19 @@
 # Cloudflare Configuration
 # ==============================================================================
 
-# Get your API token from: https://dash.cloudflare.com/profile/api-tokens
-# Required scopes:
-#   - Cloudflare Tunnel:Edit, Cloudflare Tunnel:Read
-#   - Zone:Read, DNS:Read, DNS:Edit
+# Create an account-owned token under Manage Account > Account API Tokens.
+# Required policies:
+#   - Entire Account / Cloudflare One Connector: cloudflared / Edit
+#   - Specified Domains / Zone / Read
+#   - Specified Domains / DNS / Edit
+# Add Entire Account / Workers R2 Storage / Read and Write when enabling R2.
 cloudflare_api_token = "<your-cloudflare-api-token>"
+
+# The token's 32-character ID, not its cfat_ secret. Required only for R2.
+# Obtain it after creating the token:
+#   curl -fsS "https://api.cloudflare.com/client/v4/accounts/<account-id>/tokens/verify" \
+#     -H "Authorization: Bearer <token>" | jq -r .result.id
+# cloudflare_api_token_id = "<your-account-api-token-id>"
 
 # Your Cloudflare account ID (found in dashboard)
 cloudflare_account_id = "<your-account-id>"
@@ -24,6 +32,46 @@ cloudflare_homeassistant_subdomain = "homeassistant"
 
 # Friendly name for the tunnel
 cloudflare_tunnel_name = "domotic-tunnel"
+
+# Hostnames matched by the two local Gateway API HTTPRoutes. On k3s, advertise
+# these with Avahi. For Kind, add them to the development machine's /etc/hosts.
+local_http_hostnames = {
+  homeassistant = "homeassistant.local"
+  zigbee2mqtt   = "zigbee2mqtt.local"
+}
+
+# Client-facing URLs default to http://<hostname>. Override them when a
+# development Gateway is published on another port, such as Kind's 8080.
+# local_http_urls = {
+#   homeassistant = "http://homeassistant.local:8080"
+#   zigbee2mqtt   = "http://zigbee2mqtt.local:8080"
+# }
+
+# Use restore before the first Helm deployment when importing a native Home
+# Assistant backup. It writes only a temporary minimal configuration so Home
+# Assistant can present Upload backup; the restored /config then takes over.
+homeassistant_bootstrap_mode = "seed" # or "restore"
+
+# Optional first-boot owner account in seed mode. Terraform stores these values in a
+# Kubernetes Secret and Helm completes Home Assistant's supported onboarding
+# API flow. Existing users and completed onboarding are never overwritten.
+# homeassistant_onboarding = {
+#   name     = "Home Administrator"
+#   username = "admin"
+#   password = "replace-with-a-long-unique-password"
+#   language = "en"
+# }
+
+# ==============================================================================
+# Encrypted R2 Backups (Optional)
+# ==============================================================================
+
+# The Cloudflare API token above also needs Account / Workers R2 Storage Read
+# and Write.
+# Bucket names are unique within your Cloudflare account.
+# r2_backup_bucket_name = "domotic-backups"
+# r2_backup_location    = "weur"
+# homeassistant_r2_backup_prefix = "home-assistant"
 
 # ==============================================================================
 # Kubernetes Configuration
@@ -39,15 +87,14 @@ helm_release_name = "domotic"
 # Zigbee Configuration
 # ==============================================================================
 
-# Option A: Generate keys on first run (recommended for new setups)
-# Uncomment this ONLY for initial setup, then comment out and add generated keys below
-# generate_zigbee_keys = true
+# Generate keys on the first apply. The apply task immediately captures them in
+# the ignored, mode-0600 zigbee-keys.tfvars.json file. Subsequent Task runs load
+# that file after this one, where it disables generation and supplies the keys.
+generate_zigbee_keys = true
 
-# Option B: Provide existing keys (for migrations or after first generation)
-# After first run with generate_zigbee_keys=true, get values from:
-#   terraform output -json generated_keys
-zigbee_network_key = "123456789ABCDEF0123456789ABCDEF0"  # 32 hex characters
-zigbee_ext_pan_id  = "123456789ABCDEF0"                  # 16 hex characters
+# For a migration, import a previously backed-up key file before applying:
+#   task keys:import SOURCE=/path/to/zigbee-keys.tfvars.json
+# Do not put real keys in this main configuration file.
 
 # Network settings - PROTECTED (changing breaks paired devices)
 # These are stored in a ConfigMap (non-sensitive) but still protected
