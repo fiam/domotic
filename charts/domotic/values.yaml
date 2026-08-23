@@ -12,9 +12,7 @@
 # Override values for subcharts
 # Each subchart has its own values.yaml with full configuration options
 
-homeassistant:
-  image:
-    tag: stable
+homeassistant: {}
 
 mosquitto: {}
 

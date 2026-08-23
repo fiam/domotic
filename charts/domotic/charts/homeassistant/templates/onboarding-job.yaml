@@ -1,3 +1,7 @@
+{{/*
+Private, version-coupled Home Assistant HTTP flows. Read
+HOME_ASSISTANT_COMPATIBILITY.md before changing the HA image or this Job.
+*/}}
 {{- if and .Values.onboarding.enabled (eq .Values.configSeed.mode "seed") }}
 apiVersion: batch/v1
 kind: Job

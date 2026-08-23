@@ -18,9 +18,10 @@ configSeed:
     pullPolicy: IfNotPresent
   resources: {}
 
-# Create the first owner account and finish Home Assistant's supported
-# onboarding API flow. Terraform enables this and creates the referenced Secret
-# when homeassistant_onboarding is configured. The hook preserves completed
+# Create the first owner account through Home Assistant's built-in but
+# undocumented onboarding HTTP flow. Read HOME_ASSISTANT_COMPATIBILITY.md before
+# changing the HA image. Terraform creates the referenced Secret when
+# homeassistant_onboarding is configured. The hook preserves completed
 # onboarding and never replaces an existing owner or password.
 onboarding:
   enabled: false
@@ -52,7 +53,8 @@ image:
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
-  tag: "stable"
+  # Pin exact patches: see HOME_ASSISTANT_COMPATIBILITY.md before changing.
+  tag: "2026.8.3"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []

@@ -154,7 +154,7 @@ spec:
                 - NET_ADMIN
                 - NET_RAW
                 - SYS_ADMIN
-          image: "{{ .Values.image.repository | default "homeassistant/home-assistant" }}:{{ .Values.image.tag | default "stable" }}"
+          image: "{{ .Values.image.repository | default "homeassistant/home-assistant" }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - name: http

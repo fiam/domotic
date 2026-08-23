@@ -29,6 +29,8 @@ data:
     {}
   scenes.yaml: |
     []
+  # Private Home Assistant storage formats. Read
+  # HOME_ASSISTANT_COMPATIBILITY.md before changing the HA image or this JSON.
   .storage-http: |
     {
       "version": 2,
@@ -64,13 +66,14 @@ data:
             "created_at":"2025-11-06T09:14:44.904448+00:00",
             "data": {
               "broker":"{{ $cfg.mqtt.server }}",
-              "port":{{ $cfg.mqtt.port }}
+              "port":{{ $cfg.mqtt.port }},
+              "protocol":"5"
             },
             "disabled_by":null,
             "discovery_keys":{},
             "domain":"mqtt",
             "entry_id":"01K9C74TS8PAJK8YYPA98PWT24",
-            "minor_version":2,
+            "minor_version":1,
             "modified_at":"2025-11-06T09:14:44.904451+00:00",
             "options":{},
             "pref_disable_new_entities":false,
@@ -79,7 +82,7 @@ data:
             "subentries":[],
             "title":"{{ $cfg.mqtt.server }}",
             "unique_id":null,
-            "version":1
+            "version":2
           }
           {{- if $r2.enabled -}},{{- end }}
           {{- end -}}

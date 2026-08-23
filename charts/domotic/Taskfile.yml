@@ -64,7 +64,22 @@ tasks:
     desc: Lint and test the Helm chart renderings
     cmds:
       - task: lint
-      - helm template "{{.RELEASE_NAME}}" . --namespace "{{.NAMESPACE}}" --values ../../examples/values-minimal.yaml >/dev/null
+      - |
+        ha_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/homeassistant/Chart.yaml)"
+        parent_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' Chart.yaml)"
+        test -n "$ha_version"
+        test "$parent_version" = "$ha_version"
+        for values_file in \
+          ../../examples/values-minimal.yaml \
+          ../../examples/values-kind.yaml \
+          ../../examples/values-production.yaml
+        do
+          rendered="$(helm template "{{.RELEASE_NAME}}" . \
+            --namespace "{{.NAMESPACE}}" \
+            --values "$values_file")"
+          printf '%s\n' "$rendered" |
+            grep -Fq "image: \"homeassistant/home-assistant:${ha_version}\""
+        done
       - |
         seed_render="$(helm template "{{.RELEASE_NAME}}" . \
           --namespace "{{.NAMESPACE}}" \
