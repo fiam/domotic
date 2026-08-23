@@ -47,7 +47,7 @@ Paths are relative to `infra/`:
 
 ```sh
 task apply \
-  KUBE_CONTEXT=kind-kind-ha \
+  KUBE_CONTEXT=kind-ha \
   STATE_NAMESPACE=kind-ha-terraform-state \
   TF_VARS_FILE=kind-ha.tfvars \
   TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \

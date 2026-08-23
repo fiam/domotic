@@ -204,16 +204,16 @@ file and state namespace. Give it distinct tunnel, hostname, bucket, namespace,
 and release names, then run:
 
 ```sh
-task dev:create CLUSTER_NAME=kind-ha KUBE_CONTEXT=kind-kind-ha
+task dev:create CLUSTER_NAME=ha KUBE_CONTEXT=kind-ha
 task dev:hosts:install
 task infra:apply \
-  KUBE_CONTEXT=kind-kind-ha \
+  KUBE_CONTEXT=kind-ha \
   STATE_NAMESPACE=kind-ha-terraform-state \
   TF_VARS_FILE=kind-ha.tfvars \
   TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
   HELM_VALUES_FILE=helm-values-kind-ha.yaml
 task helm:deploy \
-  KUBE_CONTEXT=kind-kind-ha \
+  KUBE_CONTEXT=kind-ha \
   RELEASE_NAME=kind-ha \
   NAMESPACE=kind-ha \
   TERRAFORM_VALUES_FILE=../../infra/helm-values-kind-ha.yaml \
