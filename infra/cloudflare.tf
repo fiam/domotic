@@ -19,7 +19,9 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "_" {
   config = {
     ingress = [{
       hostname = local.home_assistant_external_hostname
-      service  = "http://${var.helm_release_name}-homeassistant.${var.kubernetes_namespace}.svc.cluster.local:8123"
+      # Connect to the Kubernetes Service port. The Service maps port 80 to
+      # Home Assistant's container port 8123.
+      service = "http://${var.helm_release_name}-homeassistant.${var.kubernetes_namespace}.svc.cluster.local:80"
       },
       {
         service = "http_status:404"
@@ -50,4 +52,3 @@ resource "cloudflare_dns_record" "_" {
   proxied = true
   ttl     = 1
 }
-
