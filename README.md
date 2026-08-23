@@ -68,8 +68,9 @@ homeassistant_onboarding = {
 }
 ```
 
-The Helm hook uses Home Assistant's supported onboarding APIs to create the
-owner and finish first-boot onboarding, then revokes its temporary login token.
+The Helm hook uses Home Assistant's built-in but undocumented onboarding HTTP
+flow to create the owner and finish first-boot onboarding, then revokes its
+temporary login token. See `HOME_ASSISTANT_COMPATIBILITY.md` before upgrading.
 It preserves completed onboarding on later deployments. Change passwords
 through Home Assistant after the first boot; changing this Terraform value does
 not rotate an existing account.

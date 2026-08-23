@@ -115,7 +115,7 @@ variable "homeassistant_bootstrap_mode" {
 }
 
 variable "homeassistant_onboarding" {
-  description = "Optional owner account used to complete Home Assistant's supported onboarding flow on a fresh volume. Existing completed onboarding is never overwritten."
+  description = "Optional owner account used to complete Home Assistant's built-in but undocumented onboarding HTTP flow on a fresh volume. Existing completed onboarding is never overwritten."
   type = object({
     name     = string
     username = string

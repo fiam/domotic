@@ -71,8 +71,8 @@ configuration schema.
 MQTT, R2, and optional owner bootstrap. Configure
 `homeassistant_onboarding` to have Terraform place the owner name, username,
 password, and language in the `homeassistant-onboarding` Secret; Helm completes
-Home Assistant's supported onboarding API flow and revokes the temporary login
-token. Existing users are never overwritten, so this is not a
+Home Assistant's built-in but undocumented onboarding HTTP flow and revokes the
+temporary login token. Existing users are never overwritten, so this is not a
 password-rotation mechanism.
 
 Use `homeassistant_bootstrap_mode="restore"` before deploying onto a blank

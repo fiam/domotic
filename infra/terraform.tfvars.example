@@ -52,9 +52,10 @@ local_http_hostnames = {
 # Assistant can present Upload backup; the restored /config then takes over.
 homeassistant_bootstrap_mode = "seed" # or "restore"
 
-# Optional first-boot owner account in seed mode. Terraform stores these values in a
-# Kubernetes Secret and Helm completes Home Assistant's supported onboarding
-# API flow. Existing users and completed onboarding are never overwritten.
+# Optional first-boot owner account in seed mode. Terraform stores these values
+# in a Kubernetes Secret and Helm completes Home Assistant's built-in but
+# undocumented onboarding HTTP flow. Existing users and completed onboarding
+# are never overwritten. Read HOME_ASSISTANT_COMPATIBILITY.md before upgrades.
 # homeassistant_onboarding = {
 #   name     = "Home Administrator"
 #   username = "admin"
