@@ -1,2 +1,8 @@
 1. Open homeassistant by going to {{ .Values.homeassistant.config.internal_url }}
-2. Create an admin username and password
+{{- if eq .Values.homeassistant.configSeed.mode "restore" }}
+2. On the welcome screen, choose Upload backup and restore the native Home Assistant backup.
+{{- else if .Values.homeassistant.onboarding.enabled }}
+2. Log in with the owner credentials stored in {{ .Values.homeassistant.onboarding.existingSecret.name }}.
+{{- else }}
+2. On a fresh volume, complete Home Assistant onboarding manually.
+{{- end }}

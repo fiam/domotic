@@ -195,7 +195,8 @@ config:
     server: mosquitto.local
     port: 1883
   frontend:
-    internal_url: "http://zigbee2mqtt.local"
+    # Public URL included in Home Assistant's Zigbee2MQTT device page.
+    url: "http://zigbee2mqtt.local"
 
 # IMPORTANT: Do NOT configure Zigbee network settings here!
 # All network configuration (pan_id, channel, network_key, ext_pan_id) is managed by Terraform

@@ -1,0 +1,230 @@
+{{- if and .Values.onboarding.enabled (eq .Values.configSeed.mode "seed") }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "homeassistant.fullname" . }}-onboarding
+  labels:
+    {{- include "homeassistant.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "10"
+spec:
+  activeDeadlineSeconds: {{ .Values.onboarding.activeDeadlineSeconds }}
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "homeassistant.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: onboarding
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      containers:
+        - name: onboarding
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - python3
+            - -c
+          args:
+            - |
+              import json
+              import os
+              import sys
+              import time
+              import urllib.error
+              import urllib.parse
+              import urllib.request
+
+              base_url = os.environ["HOMEASSISTANT_URL"].rstrip("/")
+              client_id = os.environ["HOMEASSISTANT_CLIENT_ID"]
+
+              class CredentialsRejected(Exception):
+                  pass
+
+              def request(path, method="GET", payload=None, form=None, token=None):
+                  data = None
+                  headers = {}
+                  if payload is not None:
+                      data = json.dumps(payload).encode()
+                      headers["Content-Type"] = "application/json"
+                  elif form is not None:
+                      data = urllib.parse.urlencode(form).encode()
+                      headers["Content-Type"] = "application/x-www-form-urlencoded"
+                  if token is not None:
+                      headers["Authorization"] = f"Bearer {token}"
+                  req = urllib.request.Request(
+                      f"{base_url}{path}", data=data, headers=headers, method=method
+                  )
+                  with urllib.request.urlopen(req, timeout=10) as response:
+                      content = response.read()
+                  return json.loads(content) if content else None
+
+              def is_done(status, step):
+                  return next(item for item in status if item["step"] == step)["done"]
+
+              def login_auth_code():
+                  flow = request(
+                      "/auth/login_flow",
+                      method="POST",
+                      payload={
+                          "client_id": client_id,
+                          "handler": ["homeassistant", None],
+                          "redirect_uri": client_id,
+                      },
+                  )
+                  result = request(
+                      f"/auth/login_flow/{flow['flow_id']}",
+                      method="POST",
+                      payload={
+                          "client_id": client_id,
+                          "username": os.environ["ADMIN_USERNAME"],
+                          "password": os.environ["ADMIN_PASSWORD"],
+                      },
+                  )
+                  if result.get("type") != "create_entry":
+                      raise CredentialsRejected
+                  return result["result"]
+
+              def complete_step(status, step, path, token, payload=None):
+                  if is_done(status, step):
+                      return status
+                  try:
+                      request(path, method="POST", payload=payload, token=token)
+                  except urllib.error.HTTPError as err:
+                      # A concurrent browser or a retry may have completed it.
+                      current = request("/api/onboarding")
+                      if not is_done(current, step):
+                          raise err
+                      return current
+                  return request("/api/onboarding")
+
+              status = None
+              for _ in range(120):
+                  try:
+                      status = request("/api/onboarding")
+                      break
+                  except urllib.error.HTTPError as err:
+                      if err.code == 404:
+                          print("Home Assistant onboarding is already complete")
+                          raise SystemExit(0)
+                      time.sleep(2)
+                  except (OSError, urllib.error.URLError):
+                      time.sleep(2)
+
+              if status is None:
+                  sys.exit("Home Assistant did not become ready for onboarding")
+
+              if all(item["done"] for item in status):
+                  print("Home Assistant onboarding is already complete; preserving it")
+                  raise SystemExit(0)
+
+              auth_code = None
+              if not is_done(status, "user"):
+                  try:
+                      result = request(
+                          "/api/onboarding/users",
+                          method="POST",
+                          payload={
+                              "name": os.environ["ADMIN_NAME"],
+                              "username": os.environ["ADMIN_USERNAME"],
+                              "password": os.environ["ADMIN_PASSWORD"],
+                              "language": os.environ["ADMIN_LANGUAGE"],
+                              "client_id": client_id,
+                          },
+                      )
+                      auth_code = result["auth_code"]
+                      print("Created the first Home Assistant owner account")
+                  except urllib.error.HTTPError as err:
+                      # A concurrent browser may have completed the same
+                      # one-shot step. Continue only when HA confirms it.
+                      status = request("/api/onboarding")
+                      if not is_done(status, "user"):
+                          raise err
+
+              if auth_code is None:
+                  try:
+                      auth_code = login_auth_code()
+                  except CredentialsRejected:
+                      # This is an existing, partially onboarded installation
+                      # owned by someone else. Do not replace its credentials or
+                      # block Helm upgrades; let that owner finish in the UI.
+                      print(
+                          "Existing owner credentials differ from the seed; "
+                          "preserving the remaining onboarding steps"
+                      )
+                      raise SystemExit(0)
+
+              tokens = request(
+                  "/auth/token",
+                  method="POST",
+                  form={
+                      "client_id": client_id,
+                      "grant_type": "authorization_code",
+                      "code": auth_code,
+                  },
+              )
+              access_token = tokens["access_token"]
+              refresh_token = tokens["refresh_token"]
+              try:
+                  status = request("/api/onboarding")
+                  status = complete_step(
+                      status,
+                      "core_config",
+                      "/api/onboarding/core_config",
+                      access_token,
+                  )
+                  status = complete_step(
+                      status,
+                      "analytics",
+                      "/api/onboarding/analytics",
+                      access_token,
+                  )
+                  status = complete_step(
+                      status,
+                      "integration",
+                      "/api/onboarding/integration",
+                      access_token,
+                      {"client_id": client_id, "redirect_uri": client_id},
+                  )
+                  if not all(item["done"] for item in status):
+                      sys.exit("Home Assistant onboarding did not complete")
+              finally:
+                  request(
+                      "/auth/revoke",
+                      method="POST",
+                      form={"token": refresh_token},
+                  )
+
+              print("Home Assistant onboarding is complete")
+          env:
+            - name: HOMEASSISTANT_URL
+              value: {{ printf "http://%s:%v" (include "homeassistant.fullname" .) .Values.service.port | quote }}
+            - name: HOMEASSISTANT_CLIENT_ID
+              value: {{ printf "%s/" (trimSuffix "/" .Values.config.internal_url) | quote }}
+            - name: ADMIN_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "onboarding.existingSecret.name is required when onboarding is enabled" .Values.onboarding.existingSecret.name }}
+                  key: {{ .Values.onboarding.existingSecret.nameKey }}
+            - name: ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.onboarding.existingSecret.name }}
+                  key: {{ .Values.onboarding.existingSecret.usernameKey }}
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.onboarding.existingSecret.name }}
+                  key: {{ .Values.onboarding.existingSecret.passwordKey }}
+            - name: ADMIN_LANGUAGE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.onboarding.existingSecret.name }}
+                  key: {{ .Values.onboarding.existingSecret.languageKey }}
+          {{- with .Values.onboarding.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

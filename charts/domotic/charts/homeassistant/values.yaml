@@ -7,11 +7,44 @@ replicaCount: 1
 
 configSeed:
   enabled: true
+  # seed initializes chart defaults and integrations without overwriting
+  # user-managed files; restore writes only the minimal configuration needed
+  # on a blank volume to expose Home Assistant's native backup restoration.
+  # Set enabled=false only when the PVC is already populated independently.
+  mode: seed
   image:
     repository: busybox
     tag: "1.36.1"
     pullPolicy: IfNotPresent
   resources: {}
+
+# Create the first owner account and finish Home Assistant's supported
+# onboarding API flow. Terraform enables this and creates the referenced Secret
+# when homeassistant_onboarding is configured. The hook preserves completed
+# onboarding and never replaces an existing owner or password.
+onboarding:
+  enabled: false
+  activeDeadlineSeconds: 600
+  existingSecret:
+    name: ""
+    nameKey: name
+    usernameKey: username
+    passwordKey: password
+    languageKey: language
+  resources: {}
+
+# Seed Home Assistant's official Cloudflare R2 backup integration on the first
+# boot of a new configuration volume. Terraform supplies this block and creates
+# the referenced Secret when r2_backup_bucket_name is configured.
+r2Backup:
+  enabled: false
+  bucket: ""
+  endpointUrl: ""
+  prefix: home-assistant
+  existingSecret:
+    name: ""
+    accessKeyIdKey: access_key_id
+    secretAccessKeyKey: secret_access_key
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
@@ -172,6 +205,10 @@ config:
   name: Home
   external_url: http://example.com
   internal_url: http://homeassistant.local
+  http:
+    useXForwardedFor: true
+    trustedProxies:
+      - 10.0.0.0/8
   mqtt:
     server: mosquitto.default.svc.cluster.local
     port: 1883

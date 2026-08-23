@@ -13,13 +13,12 @@ spec:
       {{- include "zigbee2mqtt.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- $zigbeeSecret := lookup "v1" "Secret" .Release.Namespace .Values.secretRef.name }}
+      {{- $zigbeeNetwork := lookup "v1" "ConfigMap" .Release.Namespace .Values.configMapRef.name }}
       annotations:
-        {{- $configmap := lookup "v1" "ConfigMap" .Release.Namespace (printf "%s-config" (include "zigbee2mqtt.fullname" .)) }}
-        {{- if $configmap }}
-        configmap.resourceVersion: {{ $configmap.metadata.resourceVersion | quote }}
-        {{- else }}
-        configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- end }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        zigbee-keys.resourceVersion: {{ dig "metadata" "resourceVersion" "missing" $zigbeeSecret | quote }}
+        zigbee-network.resourceVersion: {{ dig "metadata" "resourceVersion" "missing" $zigbeeNetwork | quote }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -53,12 +52,26 @@ spec:
               # Always copy the latest configuration from configmap
               echo "Updating configuration from configmap"
               cp /defaults/configuration.yaml /app/data/configuration.yaml
-              cp /defaults/configuration.yaml /app/data/configuration.orig.yaml
+              network_key="$(sed 's/../0x&,/g; s/,$//' /zigbee-keys/network_key)"
+              ext_pan_id="$(sed 's/../0x&,/g; s/,$//' /zigbee-keys/ext_pan_id)"
+              {
+                printf '    pan_id: %s\n' "$(cat /zigbee-network/pan_id)"
+                printf '    channel: %s\n' "$(cat /zigbee-network/channel)"
+                printf '    ext_pan_id: [%s]\n' "$ext_pan_id"
+                printf '    network_key: [%s]\n' "$network_key"
+              } >> /app/data/configuration.yaml
+              cp /app/data/configuration.yaml /app/data/configuration.orig.yaml
           volumeMounts:
             - name: zigbee2mqtt-data
               mountPath: /app/data
             - name: zigbee2mqtt-config
               mountPath: /defaults
+            - name: zigbee-keys
+              mountPath: /zigbee-keys
+              readOnly: true
+            - name: zigbee-network
+              mountPath: /zigbee-network
+              readOnly: true
           {{- with .Values.configSeed.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
@@ -120,6 +133,14 @@ spec:
         - name: zigbee2mqtt-config
           configMap:
             name: {{ include "zigbee2mqtt.fullname" . }}-config
+        {{- if .Values.configSeed.enabled }}
+        - name: zigbee-keys
+          secret:
+            secretName: {{ .Values.secretRef.name }}
+        - name: zigbee-network
+          configMap:
+            name: {{ .Values.configMapRef.name }}
+        {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
