@@ -10,24 +10,23 @@
 # Check for Existing Resources
 # ------------------------------------------------------------------------------
 
-data "kubernetes_secret" "zigbee_keys_existing" {
-  metadata {
-    name      = "zigbee-keys"
-    namespace = var.kubernetes_namespace
-  }
+data "kubernetes_resources" "zigbee_keys_existing" {
+  api_version    = "v1"
+  kind           = "Secret"
+  namespace      = var.kubernetes_namespace
+  field_selector = "metadata.name=zigbee-keys"
 
-  # Don't error if secret doesn't exist yet
-  count = 1
+  # A namespaced list request requires the namespace to exist on first apply.
+  depends_on = [kubernetes_namespace.domotic]
 }
 
-data "kubernetes_config_map" "zigbee_network_existing" {
-  metadata {
-    name      = "zigbee-network"
-    namespace = var.kubernetes_namespace
-  }
+data "kubernetes_resources" "zigbee_network_existing" {
+  api_version    = "v1"
+  kind           = "ConfigMap"
+  namespace      = var.kubernetes_namespace
+  field_selector = "metadata.name=zigbee-network"
 
-  # Don't error if configmap doesn't exist yet
-  count = 1
+  depends_on = [kubernetes_namespace.domotic]
 }
 
 # ------------------------------------------------------------------------------
@@ -35,38 +34,42 @@ data "kubernetes_config_map" "zigbee_network_existing" {
 # ------------------------------------------------------------------------------
 
 locals {
+  existing_secret_object    = try(data.kubernetes_resources.zigbee_keys_existing.objects[0], null)
+  existing_configmap_object = try(data.kubernetes_resources.zigbee_network_existing.objects[0], null)
+
   # Check if resources exist
-  secret_exists = try(data.kubernetes_secret.zigbee_keys_existing[0].metadata[0].name, null) != null
-  configmap_exists = try(data.kubernetes_config_map.zigbee_network_existing[0].metadata[0].name, null) != null
+  secret_exists    = local.existing_secret_object != null
+  configmap_exists = local.existing_configmap_object != null
 
   # Check if resources are marked as protected
   secret_protected = try(
-    data.kubernetes_secret.zigbee_keys_existing[0].metadata[0].annotations["domotic.fiam.github.com/protected"],
+    local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/protected"],
     "false"
   ) == "true"
 
   configmap_protected = try(
-    data.kubernetes_config_map.zigbee_network_existing[0].metadata[0].annotations["domotic.fiam.github.com/protected"],
+    local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/protected"],
     "false"
   ) == "true"
 
-  # Get existing values from Secret (sensitive)
+  # The generic Kubernetes API returns Secret values as base64. Mark the decoded
+  # values sensitive explicitly because the generic data source cannot infer it.
   existing_network_key = try(
-    data.kubernetes_secret.zigbee_keys_existing[0].data["network_key"],
+    sensitive(base64decode(local.existing_secret_object.data["network_key"])),
     null
   )
   existing_ext_pan_id = try(
-    data.kubernetes_secret.zigbee_keys_existing[0].data["ext_pan_id"],
+    sensitive(base64decode(local.existing_secret_object.data["ext_pan_id"])),
     null
   )
 
   # Get existing values from ConfigMap (non-sensitive)
   existing_pan_id = try(
-    tonumber(data.kubernetes_config_map.zigbee_network_existing[0].data["pan_id"]),
+    tonumber(local.existing_configmap_object.data["pan_id"]),
     null
   )
   existing_channel = try(
-    tonumber(data.kubernetes_config_map.zigbee_network_existing[0].data["channel"]),
+    tonumber(local.existing_configmap_object.data["channel"]),
     null
   )
 
@@ -109,21 +112,21 @@ locals {
     var.generate_zigbee_keys
   )
 
-  # Non-sensitive display values for error messages
-  display_existing_network_key = local.existing_network_key != null ? nonsensitive(substr(local.existing_network_key, 0, 8)) : "unknown"
-  display_desired_network_key = nonsensitive(substr(local.desired_network_key, 0, 8))
-  display_existing_ext_pan_id = local.existing_ext_pan_id != null ? nonsensitive(local.existing_ext_pan_id) : "unknown"
-  display_desired_ext_pan_id = nonsensitive(local.desired_ext_pan_id)
+  identity_metadata_matches_config = (
+    (var.zigbee_expected_pan_id == null || var.zigbee_expected_pan_id == local.desired_pan_id) &&
+    (var.zigbee_expected_channel == null || var.zigbee_expected_channel == local.desired_channel)
+  )
 
-  # Build the error message with non-sensitive values
+  # The booleans are tainted by comparisons with sensitive values, but the
+  # resulting message names changed fields only and never includes key data.
   protection_error_message = nonsensitive(<<-EOT
     ❌ PROTECTED ZIGBEE CONFIGURATION MODIFICATION BLOCKED!
 
     You're trying to change protected Zigbee network settings that will break your network!
 
     ${local.secret_fields_would_change ? "SECRET (sensitive keys):" : ""}
-    ${local.network_key_would_change ? "  • network_key: ${local.display_existing_network_key}... → ${local.display_desired_network_key}..." : ""}
-    ${local.ext_pan_id_would_change ? "  • ext_pan_id: ${local.display_existing_ext_pan_id} → ${local.display_desired_ext_pan_id}" : ""}
+    ${local.network_key_would_change ? "  • network_key would change" : ""}
+    ${local.ext_pan_id_would_change ? "  • ext_pan_id would change" : ""}
 
     ${local.configmap_fields_would_change ? "CONFIGMAP (network settings):" : ""}
     ${local.pan_id_would_change ? "  • pan_id: ${coalesce(local.existing_pan_id, 0)} → ${local.desired_pan_id}" : ""}
@@ -134,8 +137,11 @@ locals {
     If you REALLY want to change these (requires re-pairing all devices):
       force_update_secrets = true
 
-    Otherwise, check your terraform.tfvars matches your existing config:
-      terraform output -json zigbee_config
+    Otherwise, preserve the live Secret before changing anything:
+      task keys:capture
+
+    Inspect the non-secret radio settings with:
+      kubectl -n ${var.kubernetes_namespace} get configmap zigbee-network -o yaml
   EOT
   )
 }
@@ -190,7 +196,26 @@ resource "terraform_data" "zigbee_protection_check" {
       EOT
     }
 
-    # Check 2: Protect existing resources from accidental changes
+    # Check 2: A restored identity must be paired with its recorded radio
+    # settings, even when the target cluster has no existing ConfigMap yet.
+    precondition {
+      condition = (
+        local.identity_metadata_matches_config ||
+        var.force_update_secrets
+      )
+      error_message = <<-EOT
+        ❌ ZIGBEE IDENTITY DOES NOT MATCH THE CONFIGURED NETWORK!
+
+        The imported key file records a different PAN ID or channel than
+        terraform.tfvars. Restoring keys with the wrong radio settings can
+        disconnect every paired device.
+
+        Set zigbee_pan_id and zigbee_channel to the backed-up values. Only use
+        force_update_secrets = true when intentionally creating a new network.
+      EOT
+    }
+
+    # Check 3: Protect existing resources from accidental changes
     precondition {
       condition     = !local.protected_fields_would_change || var.force_update_secrets
       error_message = local.protection_error_message
@@ -218,16 +243,16 @@ resource "kubernetes_config_map" "zigbee_network" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/protected" = "true"
+      "domotic.fiam.github.com/protected"   = "true"
       "domotic.fiam.github.com/description" = "Protected Zigbee network configuration - changing breaks network"
 
       "domotic.fiam.github.com/created.at" = try(
-        data.kubernetes_config_map.zigbee_network_existing[0].metadata[0].annotations["domotic.fiam.github.com/created.at"],
+        local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/created.at"],
         timestamp()
       )
 
       "domotic.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
-        data.kubernetes_config_map.zigbee_network_existing[0].metadata[0].annotations["domotic.fiam.github.com/last.updated"],
+        local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/last.updated"],
         ""
       )
 
@@ -262,16 +287,16 @@ resource "kubernetes_secret" "zigbee_keys" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/protected" = "true"
+      "domotic.fiam.github.com/protected"   = "true"
       "domotic.fiam.github.com/description" = "Protected Zigbee network keys - NEVER commit these"
 
       "domotic.fiam.github.com/created.at" = try(
-        data.kubernetes_secret.zigbee_keys_existing[0].metadata[0].annotations["domotic.fiam.github.com/created.at"],
+        local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/created.at"],
         timestamp()
       )
 
       "domotic.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
-        data.kubernetes_secret.zigbee_keys_existing[0].metadata[0].annotations["domotic.fiam.github.com/last.updated"],
+        local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/last.updated"],
         ""
       )
 

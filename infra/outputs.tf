@@ -24,34 +24,34 @@ output "zigbee_configmap_status" {
   }
 }
 
-output "generated_keys" {
-  description = "Generated keys (if any). SAVE THESE IMMEDIATELY!"
-  sensitive   = true
-  value = var.generate_zigbee_keys ? {
-    network_key = try(random_password.zigbee_network_key[0].result, "provided-by-user")
-    ext_pan_id  = try(random_id.zigbee_ext_pan_id[0].hex, "provided-by-user")
-
-    warning = "⚠️  SAVE THESE KEYS NOW! Add them to terraform.tfvars for future runs."
-  } : null
-}
-
-output "zigbee_config" {
-  description = "Complete Zigbee configuration (for verification)"
-  sensitive   = true
-  value = {
-    # Sensitive (from Secret)
-    network_key = kubernetes_secret.zigbee_keys.data["network_key"]
-    ext_pan_id  = kubernetes_secret.zigbee_keys.data["ext_pan_id"]
-
-    # Non-sensitive (from ConfigMap)
-    pan_id  = tonumber(kubernetes_config_map.zigbee_network.data["pan_id"])
-    channel = tonumber(kubernetes_config_map.zigbee_network.data["channel"])
-  }
-}
-
 output "cloudflare_tunnel_hostname" {
   description = "External hostname for Home Assistant via Cloudflare Tunnel"
   value       = local.home_assistant_external_hostname
+}
+
+output "kubernetes_namespace" {
+  description = "Namespace containing the Domotic application resources"
+  value       = var.kubernetes_namespace
+}
+
+output "local_http_hostnames" {
+  description = "Hostnames assigned to the local Home Assistant and Zigbee2MQTT HTTPRoutes"
+  value       = var.local_http_hostnames
+}
+
+output "local_http_urls" {
+  description = "Client-facing local URLs configured in Home Assistant and Zigbee2MQTT"
+  value       = local.effective_local_http_urls
+}
+
+output "r2_backup_bucket_name" {
+  description = "Name of the private R2 backup bucket, or an empty string when backups are disabled"
+  value       = try(cloudflare_r2_bucket.backups[0].name, "")
+}
+
+output "r2_backup_endpoint" {
+  description = "S3-compatible endpoint for the Cloudflare account"
+  value       = var.r2_backup_bucket_name == null ? "" : "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
 }
 
 # ==============================================================================
@@ -59,7 +59,7 @@ output "cloudflare_tunnel_hostname" {
 # ==============================================================================
 
 output "helm_values_yaml" {
-  description = "YAML values to use with: helm install domotic ./charts/domotic -f values.yaml"
+  description = "Generated values consumed by the Helm deployment task"
   sensitive   = false
   value = yamlencode({
     # Zigbee2MQTT configuration
@@ -72,20 +72,54 @@ output "helm_values_yaml" {
         name = kubernetes_config_map.zigbee_network.metadata[0].name
       }
       config = {
+        frontend = {
+          url = local.effective_local_http_urls.zigbee2mqtt
+        }
         mqtt = {
           server = local.mqtt_server
           port   = 1883
         }
       }
+      httpRoute = {
+        hostnames = [var.local_http_hostnames.zigbee2mqtt]
+      }
     }
 
     # Home Assistant configuration
     homeassistant = {
+      configSeed = {
+        mode = var.homeassistant_bootstrap_mode
+      }
+      onboarding = {
+        enabled = nonsensitive(var.homeassistant_onboarding != null) && var.homeassistant_bootstrap_mode == "seed"
+        existingSecret = {
+          name        = try(kubernetes_secret.homeassistant_onboarding[0].metadata[0].name, "")
+          nameKey     = "name"
+          usernameKey = "username"
+          passwordKey = "password"
+          languageKey = "language"
+        }
+      }
       config = {
         external_url = "https://${local.home_assistant_external_hostname}"
+        internal_url = local.effective_local_http_urls.homeassistant
         mqtt = {
           server = local.mqtt_server
           port   = 1883
+        }
+      }
+      httpRoute = {
+        hostnames = [var.local_http_hostnames.homeassistant]
+      }
+      r2Backup = {
+        enabled     = var.r2_backup_bucket_name != null && var.homeassistant_bootstrap_mode == "seed"
+        bucket      = try(cloudflare_r2_bucket.backups[0].name, "")
+        endpointUrl = var.r2_backup_bucket_name == null ? "" : "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+        prefix      = trim(var.homeassistant_r2_backup_prefix, "/")
+        existingSecret = {
+          name               = try(kubernetes_secret.homeassistant_r2_credentials[0].metadata[0].name, "")
+          accessKeyIdKey     = "access_key_id"
+          secretAccessKeyKey = "secret_access_key"
         }
       }
     }
@@ -101,16 +135,14 @@ output "helm_values_yaml" {
 }
 
 output "helm_install_command" {
-  description = "Command to install the Helm chart"
+  description = "Task commands to generate values and deploy the Helm chart"
   value       = <<-EOT
-    # Save Helm values to file:
-    terraform output -raw helm_values_yaml > helm-values.yaml
+    # From the repository root, refresh the generated values:
+    task infra:helm-values
 
-    # Install the chart:
-    helm install ${var.helm_release_name} ./charts/domotic \
-      --namespace ${var.kubernetes_namespace} \
-      --create-namespace \
-      -f helm-values.yaml \
-      -f your-custom-values.yaml
+    # Install or upgrade the chart using root values.yaml:
+    task helm:deploy \
+      RELEASE_NAME=${var.helm_release_name} \
+      NAMESPACE=${var.kubernetes_namespace}
   EOT
 }

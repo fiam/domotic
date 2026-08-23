@@ -10,13 +10,17 @@
 *.tfstate
 *.tfstate.*
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
 .terraform/
-.terraform.lock.hcl
+.terraform-check/
 infra/helm-values.yaml
+infra/helm-values-*.yaml
 
 # Secrets
 /secret.*
+/backup.env
+/restore/
 *.pem
 *.key
 *.crt
