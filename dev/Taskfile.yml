@@ -1,0 +1,100 @@
+version: '3'
+
+vars:
+  CLUSTER_NAME: '{{.CLUSTER_NAME | default "domotic"}}'
+  DEV_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "kind-domotic"}}'
+  NGF_VERSION: '{{.NGF_VERSION | default "2.6.7"}}'
+  DEV_HOST_ADDRESS: '{{.HOST_ADDRESS | default "127.0.0.1"}}'
+  HOMEASSISTANT_HTTP_HOSTNAME: '{{.HOMEASSISTANT_HOSTNAME | default "homeassistant.local"}}'
+  ZIGBEE2MQTT_HTTP_HOSTNAME: '{{.ZIGBEE2MQTT_HOSTNAME | default "zigbee2mqtt.local"}}'
+
+tasks:
+  default:
+    desc: List development tasks
+    cmds:
+      - task --list
+
+  tools:
+    internal: true
+    preconditions:
+      - sh: command -v kind >/dev/null
+        msg: Install Kind before creating the development cluster.
+      - sh: command -v kubectl >/dev/null
+        msg: Install kubectl before creating the development cluster.
+      - sh: command -v helm >/dev/null
+        msg: Install Helm before creating the development cluster.
+
+  cluster:
+    internal: true
+    deps: [tools]
+    status:
+      - kind get clusters | grep -Fx "{{.CLUSTER_NAME}}" >/dev/null
+    cmds:
+      - kind create cluster --name "{{.CLUSTER_NAME}}" --config kind.yaml
+
+  create:
+    desc: Create or reconcile the Kind development cluster
+    cmds:
+      - task: cluster
+      - >-
+        kubectl --context "{{.DEV_KUBE_CONTEXT}}" kustomize
+        "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v{{.NGF_VERSION}}" |
+        kubectl --context "{{.DEV_KUBE_CONTEXT}}" apply -f -
+      - >-
+        helm upgrade --install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric
+        --version "{{.NGF_VERSION}}"
+        --create-namespace
+        --namespace nginx-gateway
+        --kube-context "{{.DEV_KUBE_CONTEXT}}"
+        --set nginx.service.type=NodePort
+        --set-json 'nginx.service.nodePorts=[{"port":31437,"listenerPort":80}]'
+        --wait
+        --timeout 5m
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" apply -f gateway.yaml
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" apply -k ../zstackmulator
+
+  destroy:
+    desc: Delete the Kind development cluster
+    cmds:
+      - kind delete cluster --name "{{.CLUSTER_NAME}}"
+
+  status:
+    desc: Show development cluster status
+    cmds:
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" get nodes
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" get gateways --all-namespaces
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" get pods --all-namespaces
+
+  hosts:install:
+    desc: Add the Kind HTTPRoute names to the development machine's /etc/hosts
+    cmds:
+      - >-
+        sudo ../scripts/dev-hosts.sh install
+        "{{.DEV_HOST_ADDRESS}}"
+        "{{.HOMEASSISTANT_HTTP_HOSTNAME}}"
+        "{{.ZIGBEE2MQTT_HTTP_HOSTNAME}}"
+
+  hosts:remove:
+    desc: Remove the managed Kind names from /etc/hosts
+    cmds:
+      - sudo ../scripts/dev-hosts.sh remove
+
+  emulator:install:
+    desc: Deploy the Zigbee coordinator emulator
+    cmds:
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" apply -k ../zstackmulator
+
+  emulator:uninstall:
+    desc: Remove the Zigbee coordinator emulator
+    cmds:
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" delete -k ../zstackmulator --ignore-not-found
+
+  emulator:status:
+    desc: Show Zigbee coordinator emulator status
+    cmds:
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" --namespace zstackmulator get all,configmap
+
+  emulator:logs:
+    desc: Follow Zigbee coordinator emulator logs
+    cmds:
+      - kubectl --context "{{.DEV_KUBE_CONTEXT}}" --namespace zstackmulator logs --selector app=zstackmulator --tail=100 --follow

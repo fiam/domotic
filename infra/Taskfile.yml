@@ -1,0 +1,157 @@
+version: '3'
+
+vars:
+  KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH | default (printf "%s/.kube/config" .HOME)}}'
+  TF_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
+  STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
+  TF_VARS_FILE: '{{.TF_VARS_FILE | default "terraform.tfvars"}}'
+  TF_KEYS_FILE: '{{.TF_KEYS_FILE | default "zigbee-keys.tfvars.json"}}'
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default "helm-values.yaml"}}'
+  CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".terraform-check"}}'
+
+env:
+  KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH}}'
+  KUBE_CTX: '{{.TF_KUBE_CONTEXT}}'
+  KUBE_NAMESPACE: '{{.STATE_NAMESPACE}}'
+  TF_VARS_FILE: '{{.TF_VARS_FILE}}'
+  TF_KEYS_FILE: '{{.TF_KEYS_FILE}}'
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE}}'
+
+tasks:
+  default:
+    desc: List infrastructure tasks
+    cmds:
+      - task --list
+
+  preflight:
+    desc: Check Terraform, kubectl, and cluster access
+    preconditions:
+      - sh: command -v terraform >/dev/null
+        msg: Install Terraform before running infrastructure tasks.
+      - sh: command -v kubectl >/dev/null
+        msg: Install kubectl before running infrastructure tasks.
+      - sh: test -f "{{.TF_VARS_FILE}}"
+        msg: Copy terraform.tfvars.example to the requested TF_VARS_FILE and configure it first.
+    cmds:
+      - kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}" get namespace >/dev/null
+
+  state-namespace:
+    desc: Ensure the Terraform state namespace exists
+    deps: [preflight]
+    cmds:
+      - >-
+        kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}"
+        create namespace "{{.STATE_NAMESPACE}}" --dry-run=client -o yaml |
+        kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}" apply -f -
+
+  init:
+    desc: Initialize Terraform and its Kubernetes backend
+    cmds:
+      - task: state-namespace
+      - terraform init -reconfigure
+
+  plan:
+    desc: Preview infrastructure changes
+    cmds:
+      - task: init
+      - |
+        if [ -f "{{.TF_KEYS_FILE}}" ]; then
+          terraform plan -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
+        else
+          terraform plan -var-file="{{.TF_VARS_FILE}}"
+        fi
+
+  apply:
+    desc: Apply infrastructure changes and refresh Helm values
+    cmds:
+      - task: init
+      - |
+        if [ -f "{{.TF_KEYS_FILE}}" ]; then
+          terraform apply -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
+        else
+          terraform apply -var-file="{{.TF_VARS_FILE}}"
+        fi
+      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
+      - task: helm-values
+
+  destroy:
+    desc: Destroy Terraform-managed infrastructure
+    cmds:
+      - task: init
+      - |
+        if [ -f "{{.TF_KEYS_FILE}}" ]; then
+          terraform destroy -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
+        else
+          terraform destroy -var-file="{{.TF_VARS_FILE}}"
+        fi
+
+  keys:capture:
+    desc: Capture the live Zigbee identity as an ignored Terraform variable file
+    cmds:
+      - task: init
+      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
+
+  keys:import:
+    desc: Import a portable Zigbee identity file or restored backup directory
+    requires:
+      vars: [SOURCE]
+    cmds:
+      - ../scripts/zigbee-keys.sh import "{{.SOURCE}}" "{{.TF_KEYS_FILE}}"
+
+  helm-values:
+    desc: Write Terraform outputs consumed by the Helm chart
+    cmds:
+      - terraform output -raw helm_values_yaml > "{{.HELM_VALUES_FILE}}"
+
+  outputs:
+    desc: Show Terraform outputs
+    cmds:
+      - terraform output {{.CLI_ARGS}}
+
+  backup:
+    desc: Encrypt configuration and state, then upload them to Cloudflare R2
+    cmds:
+      - task: init
+      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
+      - ../scripts/r2-backup.sh backup
+
+  backup-list:
+    desc: List encrypted backups in Cloudflare R2
+    cmds:
+      - ../scripts/r2-backup.sh list
+
+  backup-restore:
+    desc: Download and decrypt a backup without overwriting active files
+    requires:
+      vars: [OBJECT]
+    cmds:
+      - ../scripts/r2-backup.sh restore "{{.OBJECT}}"
+
+  format:
+    desc: Format Terraform files
+    cmds:
+      - terraform fmt -recursive
+
+  format-check:
+    desc: Check Terraform formatting
+    cmds:
+      - terraform fmt -check -recursive
+
+  validate:
+    desc: Validate Terraform configuration without accessing remote state
+    cmds:
+      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform init -backend=false -input=false
+      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform validate
+
+  test:
+    desc: Run Terraform tests with mocked external providers
+    cmds:
+      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform init -backend=false -input=false
+      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform test
+
+  check:
+    desc: Check Terraform formatting, configuration, and tests
+    cmds:
+      - task: format-check
+      - task: validate
+      - task: test

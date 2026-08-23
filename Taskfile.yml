@@ -1,0 +1,92 @@
+version: '3'
+
+includes:
+  infra:
+    taskfile: ./infra
+    dir: ./infra
+  helm:
+    taskfile: ./charts/domotic
+    dir: ./charts/domotic
+  dev:
+    taskfile: ./dev
+    dir: ./dev
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  check:
+    desc: Validate Terraform and Helm configuration
+    cmds:
+      - task: infra:check
+      - task: helm:check
+
+  deploy:
+    desc: Apply infrastructure and deploy the chart
+    cmds:
+      - task: infra:apply
+      - task: helm:deploy
+
+  backup:
+    desc: Encrypt configuration and state, then upload them to Cloudflare R2
+    cmds:
+      - task: infra:backup
+
+  backup:list:
+    desc: List encrypted backups in Cloudflare R2
+    cmds:
+      - task: infra:backup-list
+
+  backup:restore:
+    desc: Download and decrypt a backup into the ignored restore directory
+    requires:
+      vars: [OBJECT]
+    cmds:
+      - task: infra:backup-restore
+        vars:
+          OBJECT: '{{.OBJECT}}'
+
+  keys:capture:
+    desc: Capture the live Zigbee identity into the ignored Terraform file
+    cmds:
+      - task: infra:keys:capture
+
+  keys:import:
+    desc: Import a Zigbee identity from a portable file or restored backup
+    requires:
+      vars: [SOURCE]
+    cmds:
+      - task: infra:keys:import
+        vars:
+          SOURCE: '{{.SOURCE}}'
+
+  destroy:
+    desc: Uninstall the chart and destroy the infrastructure
+    cmds:
+      - task: helm:uninstall
+      - task: infra:destroy
+
+  deploy-dev:
+    desc: Create Kind and deploy the complete development stack
+    cmds:
+      - task: dev:create
+      - task: infra:apply
+        vars:
+          KUBE_CONTEXT: kind-domotic
+      - task: helm:deploy
+        vars:
+          KUBE_CONTEXT: kind-domotic
+          VALUES_FILE: '{{.ROOT_DIR}}/examples/values-kind.yaml'
+
+  destroy-dev:
+    desc: Remove the development deployment, infrastructure, and Kind cluster
+    cmds:
+      - task: helm:uninstall
+        vars:
+          KUBE_CONTEXT: kind-domotic
+      - task: infra:destroy
+        vars:
+          KUBE_CONTEXT: kind-domotic
+      - task: dev:destroy
