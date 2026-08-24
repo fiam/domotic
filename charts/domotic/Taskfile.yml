@@ -95,10 +95,21 @@ tasks:
           --set homeassistant.r2Backup.automatic.existingSecret.name=homeassistant-backup-encryption)"
         printf '%s\n' "$seed_render" | grep -q 'name: domotic-homeassistant-onboarding'
         printf '%s\n' "$seed_render" | grep -q 'Home Assistant onboarding is complete'
+        printf '%s\n' "$seed_render" | grep -q 'config/core/update'
+        printf '%s\n' "$seed_render" | grep -q 'name: HOMEASSISTANT_EXTERNAL_URL'
+        printf '%s\n' "$seed_render" | grep -q 'name: HOMEASSISTANT_INTERNAL_URL'
         printf '%s\n' "$seed_render" | grep -q 'backup/config/update'
         printf '%s\n' "$seed_render" | grep -q 'name: homeassistant-backup-encryption'
         if printf '%s\n' "$seed_render" | grep -q 'mountPath: /config/configuration.yaml'; then
           echo 'configuration.yaml must live on the PVC, not a permanent subPath mount' >&2
+          exit 1
+        fi
+        configuration_render="$(helm template "{{.RELEASE_NAME}}" . \
+          --namespace "{{.NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --show-only charts/homeassistant/templates/configmap.yaml)"
+        if printf '%s\n' "$configuration_render" | grep -q '^    homeassistant:'; then
+          echo 'UI-managed Home Assistant core settings must not be rendered in configuration.yaml' >&2
           exit 1
         fi
       - |

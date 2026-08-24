@@ -27,9 +27,9 @@ zigbee2mqtt:
 # Home Assistant Configuration  
 homeassistant:
   config:
+    # Reconciled through the Home Assistant API on each seed-mode deployment.
+    # UI edits remain possible but are reset to these values on the next deploy.
     name: "Home"
-    latitude: 40.7128
-    longitude: -74.0060
     external_url: "https://homeassistant.example.com"  # Managed by Cloudflare Tunnel
     internal_url: "http://homeassistant.local"
     

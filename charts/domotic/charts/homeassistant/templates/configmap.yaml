@@ -11,10 +11,6 @@ data:
     default_config:
     frontend:
       themes: !include_dir_merge_named themes
-    homeassistant:
-      name: {{ $cfg.name | default "Home" }}
-      external_url: {{ $cfg.external_url | default "http://example.com" }}
-      internal_url: {{ $cfg.internal_url | default "http://homeassistant.local" }}
 
     automation: !include automations.yaml
     script: !include scripts.yaml

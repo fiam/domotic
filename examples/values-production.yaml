@@ -46,11 +46,9 @@ homeassistant:
     tag: "2026.8.3"  # Pin this and test upgrades before production use
   
   config:
+    # Reconciled through the Home Assistant API on each seed-mode deployment.
+    # Configure regional settings in the Home Assistant UI.
     name: "My Smart Home"
-    latitude: 37.7749
-    longitude: -122.4194
-    timezone: "America/Los_Angeles"
-    unit_system: "metric"
 
   persistence:
     enabled: true

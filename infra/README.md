@@ -65,7 +65,11 @@ from the live Secret and ConfigMap before encrypting and uploading the archive.
 `local_http_urls` is optional and defaults to `http://` plus those hostnames;
 set it explicitly when the client-visible port differs, such as port 8080 for
 Kind. Zigbee2MQTT receives this as `frontend.url`, matching its current
-configuration schema.
+configuration schema. In seed mode, the Helm onboarding hook reconciles Home
+Assistant's external and internal URLs through its authenticated WebSocket API
+on every install or upgrade. They remain editable in the UI, but the next
+deployment restores the Terraform values instead of treating UI changes as
+persistent drift.
 
 `homeassistant_bootstrap_mode="seed"` enables create-only configuration, HTTP,
 MQTT, R2, and optional owner bootstrap. Configure

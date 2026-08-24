@@ -217,6 +217,9 @@ tolerations: []
 affinity: {}
 
 config:
+  # Reconciled through Home Assistant's WebSocket API on every seed-mode Helm
+  # install/upgrade. The UI remains editable, but a later deployment restores
+  # these declared values.
   name: Home
   external_url: http://example.com
   internal_url: http://homeassistant.local

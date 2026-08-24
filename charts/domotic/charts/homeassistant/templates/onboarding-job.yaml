@@ -1,5 +1,5 @@
 {{/*
-Private, version-coupled Home Assistant HTTP flows. Read
+Private, version-coupled Home Assistant HTTP and WebSocket flows. Read
 HOME_ASSISTANT_COMPATIBILITY.md before changing the HA image or this Job.
 */}}
 {{- if and .Values.onboarding.enabled (eq .Values.configSeed.mode "seed") }}
@@ -108,10 +108,10 @@ spec:
                       return current
                   return request("/api/onboarding")
 
-              async def configure_automatic_backups(token):
+              async def configure_homeassistant(token):
                   # aiohttp is part of the pinned Home Assistant image. The
-                  # backup WebSocket commands are private and version-coupled;
-                  # keep HOME_ASSISTANT_COMPATIBILITY.md in sync with them.
+                  # WebSocket commands are private and version-coupled; keep
+                  # HOME_ASSISTANT_COMPATIBILITY.md in sync with them.
                   import aiohttp
 
                   parsed_url = urllib.parse.urlsplit(base_url)
@@ -165,6 +165,26 @@ spec:
                                           f"{error.get('code', 'unknown')}"
                                       )
                                   return response.get("result")
+
+                          await command(
+                              "config/core/update",
+                              location_name=os.environ[
+                                  "HOMEASSISTANT_LOCATION_NAME"
+                              ],
+                              external_url=os.environ[
+                                  "HOMEASSISTANT_EXTERNAL_URL"
+                              ],
+                              internal_url=os.environ[
+                                  "HOMEASSISTANT_INTERNAL_URL"
+                              ],
+                          )
+                          print(
+                              "Reconciled Home Assistant name and URLs through "
+                              "the WebSocket API"
+                          )
+
+                          if not automatic_backups_enabled:
+                              return
 
                           config_result = await command("backup/config/info")
                           if config_result["config"].get(
@@ -272,9 +292,6 @@ spec:
                   print("Home Assistant onboarding is already complete; preserving it")
                   onboarding_complete = True
 
-              if onboarding_complete and not automatic_backups_enabled:
-                  raise SystemExit(0)
-
               auth_code = None
               if not onboarding_complete and not is_done(status, "user"):
                   try:
@@ -346,8 +363,7 @@ spec:
                       )
                       if not all(item["done"] for item in status):
                           sys.exit("Home Assistant onboarding did not complete")
-                  if automatic_backups_enabled:
-                      asyncio.run(configure_automatic_backups(access_token))
+                  asyncio.run(configure_homeassistant(access_token))
               finally:
                   request(
                       "/auth/revoke",
@@ -361,6 +377,12 @@ spec:
               value: {{ printf "http://%s:%v" (include "homeassistant.fullname" .) .Values.service.port | quote }}
             - name: HOMEASSISTANT_CLIENT_ID
               value: {{ printf "%s/" (trimSuffix "/" .Values.config.internal_url) | quote }}
+            - name: HOMEASSISTANT_LOCATION_NAME
+              value: {{ .Values.config.name | default "Home" | quote }}
+            - name: HOMEASSISTANT_EXTERNAL_URL
+              value: {{ required "config.external_url is required when onboarding is enabled" .Values.config.external_url | quote }}
+            - name: HOMEASSISTANT_INTERNAL_URL
+              value: {{ required "config.internal_url is required when onboarding is enabled" .Values.config.internal_url | quote }}
             - name: ADMIN_NAME
               valueFrom:
                 secretKeyRef:
