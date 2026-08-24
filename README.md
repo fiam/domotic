@@ -165,7 +165,10 @@ an ignored staging directory without replacing active files.
 ## Development with Kind
 
 Kind is development tooling, not the production deployment path. Its Taskfile
-and manifests live under `dev/` and it installs the Zigbee coordinator emulator:
+and manifests live under `dev/` and it installs the Zigbee coordinator emulator.
+When using Colima, follow
+[DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md) to make known LAN device
+addresses reachable and to preserve the correct Terraform teardown order:
 
 ```sh
 task dev:create
@@ -246,6 +249,7 @@ before removing the bucket.
 domotic/
 ├── Taskfile.yml              # Repository-wide workflows
 ├── BACKUP.md                 # Encrypted Cloudflare R2 backup and recovery
+├── DEVELOPMENT_NETWORKING.md # Colima, Kind, and LAN routing safety
 ├── backup.env.example        # Private backup-client configuration template
 ├── charts/domotic/          # Helm chart (user-facing)
 │   ├── Chart.yaml

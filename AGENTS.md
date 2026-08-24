@@ -4,6 +4,12 @@ Before changing Home Assistant versions, bootstrap behavior, configuration,
 authentication, proxy settings, integrations, or backups, read and follow
 [HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md).
 
+Before changing the Kind topology, Colima configuration, development routes,
+or destroying a local development cluster, read and follow
+[DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md). The Kind cluster holds
+its own Terraform backend; deleting it without first destroying the external
+test infrastructure or preserving that state can orphan Cloudflare resources.
+
 Treat every Home Assistant version change as a compatibility migration. This
 repository intentionally uses private Home Assistant HTTP and WebSocket
 interfaces for onboarding, integration config flows, HTTP configuration, and
