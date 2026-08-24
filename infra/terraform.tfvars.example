@@ -74,6 +74,21 @@ homeassistant_bootstrap_mode = "seed" # or "restore"
 # r2_backup_location    = "weur"
 # homeassistant_r2_backup_prefix = "home-assistant"
 
+# With an R2 bucket and homeassistant_onboarding, seed mode configures daily,
+# encrypted R2 backups automatically and retains seven copies. Omit this block
+# for those defaults. A null time uses Home Assistant's randomized early-morning
+# schedule; later changes made in Home Assistant are preserved.
+# homeassistant_automatic_backups = {
+#   enabled          = true
+#   retention_copies = 7
+#   time             = null # or "03:30:00"
+# }
+
+# Terraform generates a separate 32-character native-backup password by
+# default. Set one only when importing an existing recovery password, and keep
+# it in this ignored file or another protected Terraform variable source.
+# homeassistant_backup_password = "replace-with-an-existing-recovery-password"
+
 # ==============================================================================
 # Kubernetes Configuration
 # ==============================================================================

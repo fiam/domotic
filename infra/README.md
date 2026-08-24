@@ -75,6 +75,15 @@ Home Assistant's built-in but undocumented onboarding HTTP flow and revokes the
 temporary login token. Existing users are never overwritten, so this is not a
 password-rotation mechanism.
 
+When an R2 bucket and owner seed are both configured, that same temporary admin
+session initializes daily encrypted backups to the R2 agent with seven-copy
+retention. Terraform generates the distinct recovery password in
+`homeassistant-backup-encryption` for that initialization.
+`homeassistant_automatic_backups` can change the first-boot retention/time or
+disable the schedule; after initialization, Home Assistant owns the settings
+and later UI changes are preserved. An existing schedule retains its existing
+emergency-kit key, which may differ from the Terraform Secret.
+
 Use `homeassistant_bootstrap_mode="restore"` before deploying onto a blank
 volume that will receive a native Home Assistant backup. The chart creates only
 a minimal temporary `configuration.yaml` needed to expose the welcome screen;

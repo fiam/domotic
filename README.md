@@ -154,9 +154,12 @@ task backup:list
 Follow [BACKUP.md](BACKUP.md) first to configure the bucket, account token ID,
 and an independently stored age identity. Terraform derives one R2 credential
 pair from the same account token and configures Home Assistant's official R2
-backup location on a fresh installation. The repository backup workflow never
-uploads plaintext secrets and restores into an ignored staging directory
-without replacing active files.
+backup location on a fresh installation. With owner seeding enabled, it also
+defaults to daily encrypted R2 backups with seven-copy retention. Preserve the
+generated `homeassistant-backup-encryption` password outside the cluster; the
+repository backup includes it inside the separate age-encrypted archive. The
+repository backup workflow never uploads plaintext secrets and restores into
+an ignored staging directory without replacing active files.
 
 ## Development with Kind
 

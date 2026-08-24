@@ -16,6 +16,8 @@ Last verified: **2026-08-23**
 | Config-entry storage file | `.storage/core.config_entries`, store `1.5` |
 | MQTT config entry | entry `2.1`, protocol `5` |
 | Cloudflare R2 config entry | entry `1.1` |
+| Backup storage file | `.storage/backup`, store `1.7` |
+| Seeded automatic backup | daily, R2 only, seven copies, protected |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
@@ -33,7 +35,9 @@ change in any Home Assistant release, including a patch release.
 | `templates/configmap.yaml` | MQTT and Cloudflare R2 config entries can be created by writing storage instead of completing each integration's config flow | Validation and defaults normally applied by config flows are bypassed. |
 | `templates/onboarding-job.yaml` | `/api/onboarding` and its step endpoints retain their paths, payloads, order, authentication requirements, and response shapes | The owner may not be created or onboarding may remain partially complete. |
 | `templates/onboarding-job.yaml` | `/auth/login_flow` accepts the `homeassistant` handler and returns an authorization code in the current flow result shape | Retry of partially completed onboarding can fail. |
-| `templates/onboarding-job.yaml` | The Home Assistant image contains a compatible `python3` standard library | The Helm hook cannot run. |
+| `templates/onboarding-job.yaml` | The private `backup/config/info`, `backup/agents/info`, and `backup/config/update` WebSocket commands retain their schemas and admin authorization behavior | The automatic R2 schedule may be absent, target the wrong agent, lose encryption, or apply incorrect retention. |
+| `templates/onboarding-job.yaml` | The R2 backup agent ID starts with `cloudflare_r2.` and its display name equals the seeded config-entry title/bucket | The hook cannot identify the intended R2 destination. |
+| `templates/onboarding-job.yaml` | The Home Assistant image contains compatible `python3` and `aiohttp` runtimes | The Helm hook cannot run. |
 | `templates/deployment.yaml` | Missing files on `/config` reliably identify a fresh volume and Home Assistant has not started while storage is seeded | Existing configuration could be overwritten or two writers could corrupt storage. |
 | Restore mode | Starting with only `default_config:` exposes Home Assistant's native onboarding backup upload flow and a restored `/config` takes over | A new release may require different bootstrap configuration or restore steps. |
 
@@ -58,6 +62,10 @@ code, constants, schemas, migrations, and tests—not just release notes.
 - [MQTT config flow and entry version](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/mqtt/config_flow.py)
 - [MQTT constants](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/mqtt/const.py)
 - [Cloudflare R2 config flow](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/config_flow.py)
+- [Backup WebSocket command schemas](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/websocket.py)
+- [Automatic schedule and retention model](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/config.py)
+- [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/agent.py)
+- [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/backup.py)
 - [Native backup documentation](https://www.home-assistant.io/integrations/backup/)
 
 Also inspect the integration tests beside those source files. They often show
@@ -86,11 +94,16 @@ required payloads and migration behavior more precisely than user-facing docs.
 
 7. Restart the Home Assistant Deployment and repeat the login, integration,
    route, and log checks. This catches schemas accepted only during migration.
-8. Test `homeassistant_bootstrap_mode = "restore"` separately with a disposable
+8. When automatic R2 backups are enabled, verify in the backup UI or through a
+   redacting WebSocket client that only the expected R2 agent is selected, the
+   recurrence is daily, retention matches the Terraform input, protection has
+   a non-empty password, and `next_automatic_backup` is populated. Never print
+   the password. Re-run the hook and confirm it preserves the stored settings.
+9. Test `homeassistant_bootstrap_mode = "restore"` separately with a disposable
    native backup. Confirm that neither config-entry seeding nor owner seeding
    runs and that the restored configuration survives another restart.
-9. Create and restore a test backup through the Cloudflare R2 integration.
-10. Update the verified date, versions, source links, and any changed failure
+10. Create and restore a test backup through the Cloudflare R2 integration.
+11. Update the verified date, versions, source links, and any changed failure
     assumptions in this document. Record what was actually exercised.
 
 Do not test an upgrade first against the production PVC. Preserve a native
@@ -104,11 +117,21 @@ automated owner creation, a real login and token revocation, MQTT and Cloudflare
 R2 both reporting `loaded`, the storage checks above, a Home Assistant rollout
 restart, and local and tunnel route checks.
 
+Automatic backup seeding was separately exercised on a fresh disposable Kind
+PVC against the real test R2 bucket. The resulting backup store selected only
+the discovered `cloudflare_r2.*` agent, used daily recurrence, null time
+(Home Assistant's randomized default), seven-copy retention, and a non-empty
+password matching the Terraform-managed Secret. A second hook run left the
+complete backup configuration byte-for-byte unchanged. In the working Kind
+environment, an actual native backup was also created with stored automatic
+settings, and both its `.tar` and `.metadata.json` objects were confirmed under
+the configured R2 prefix.
+
 Cloudflare R2 currently emits blocking-call warnings while botocore loads its
 service data and CA bundle. The integration still reaches `loaded`; no setup or
 credential error was present. Recheck these warnings on upgrade rather than
 hiding them or treating them as proof that setup failed.
 
-Native-backup upload/restore and creation of an actual R2 backup object were
-not exercised in this baseline run. They remain required before approving a
-Home Assistant version change for production.
+Native-backup upload through R2 is verified. Download/decryption and a complete
+native restore were not exercised in this baseline run and remain required
+before approving a Home Assistant version change for production.
