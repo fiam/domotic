@@ -160,7 +160,8 @@ run "native_restore_disables_owner_seed" {
       !yamldecode(output.helm_values_yaml).homeassistant.onboarding.enabled &&
       yamldecode(output.helm_values_yaml).homeassistant.onboarding.existingSecret.name == "" &&
       yamldecode(output.helm_values_yaml).homeassistant.configSeed.mode == "restore" &&
-      !yamldecode(output.helm_values_yaml).homeassistant.r2Backup.enabled
+      !yamldecode(output.helm_values_yaml).homeassistant.r2Backup.enabled &&
+      !yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.enabled
     )
     error_message = "Restore mode must disable Home Assistant owner, integration, and storage seeding."
   }

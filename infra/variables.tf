@@ -185,6 +185,50 @@ variable "homeassistant_r2_backup_prefix" {
   }
 }
 
+variable "homeassistant_automatic_backups" {
+  description = "First-boot automatic backup defaults when R2 and owner seeding are enabled. Home Assistant owns the settings after they are initialized."
+  type = object({
+    enabled          = optional(bool, true)
+    retention_copies = optional(number, 7)
+    time             = optional(string)
+  })
+  default = {}
+
+  validation {
+    condition = (
+      var.homeassistant_automatic_backups.retention_copies >= 1 &&
+      floor(var.homeassistant_automatic_backups.retention_copies) == var.homeassistant_automatic_backups.retention_copies
+    )
+    error_message = "Home Assistant automatic backup retention_copies must be a positive integer."
+  }
+
+  validation {
+    condition = (
+      var.homeassistant_automatic_backups.time == null ||
+      can(regex("^(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]$", var.homeassistant_automatic_backups.time))
+    )
+    error_message = "Home Assistant automatic backup time must be null or a 24-hour HH:MM:SS value."
+  }
+}
+
+variable "homeassistant_backup_password" {
+  description = "Optional password used when seed mode initializes native Home Assistant backups. Terraform generates one when R2 is enabled; preserve it outside the cluster for recovery."
+  type        = string
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition = (
+      var.homeassistant_backup_password == null ||
+      (
+        length(var.homeassistant_backup_password) >= 16 &&
+        length(var.homeassistant_backup_password) <= 128
+      )
+    )
+    error_message = "The Home Assistant backup password must contain 16-128 characters."
+  }
+}
+
 # ==============================================================================
 # Zigbee Configuration
 # ==============================================================================

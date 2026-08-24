@@ -49,6 +49,12 @@ run "r2_credentials_are_derived_for_homeassistant" {
     generate_zigbee_keys    = true
     r2_backup_bucket_name   = "domotic-test-backups"
     r2_backup_location      = "weur"
+    homeassistant_onboarding = {
+      name     = "Home Administrator"
+      username = "admin"
+      password = "a-long-test-password"
+      language = "en"
+    }
   }
 
   assert {
@@ -70,5 +76,22 @@ run "r2_credentials_are_derived_for_homeassistant" {
   assert {
     condition     = strcontains(output.helm_values_yaml, "homeassistant-r2-credentials")
     error_message = "Generated Helm values must reference Terraform's R2 credentials Secret."
+  }
+
+  assert {
+    condition = (
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.enabled &&
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.agentName ==
+      "domotic-test-backups" &&
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.retentionCopies == 7 &&
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.existingSecret.name ==
+      "homeassistant-backup-encryption"
+    )
+    error_message = "Seed mode must enable daily R2 backups with the generated encryption Secret."
+  }
+
+  assert {
+    condition     = random_password.homeassistant_backup[0].length == 32
+    error_message = "Terraform must generate a distinct native backup password."
   }
 }

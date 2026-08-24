@@ -121,6 +121,16 @@ output "helm_values_yaml" {
           accessKeyIdKey     = "access_key_id"
           secretAccessKeyKey = "secret_access_key"
         }
+        automatic = {
+          enabled         = local.homeassistant_automatic_backups_enabled
+          agentName       = try(cloudflare_r2_bucket.backups[0].name, "")
+          retentionCopies = var.homeassistant_automatic_backups.retention_copies
+          time            = var.homeassistant_automatic_backups.time
+          existingSecret = {
+            name        = try(kubernetes_secret.homeassistant_backup_encryption[0].metadata[0].name, "")
+            passwordKey = "password"
+          }
+        }
       }
     }
 

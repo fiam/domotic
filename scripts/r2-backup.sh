@@ -143,6 +143,17 @@ make_backup() {
     --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
     --context "${KUBE_CTX:-domotic}" \
     --namespace "$app_namespace" \
+    get secret homeassistant-backup-encryption >/dev/null 2>&1; then
+    kubectl \
+      --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
+      --context "${KUBE_CTX:-domotic}" \
+      --namespace "$app_namespace" \
+      get secret homeassistant-backup-encryption -o json > "$payload_dir/kubernetes/homeassistant-backup-encryption.json"
+  fi
+  if kubectl \
+    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
+    --context "${KUBE_CTX:-domotic}" \
+    --namespace "$app_namespace" \
     get secret homeassistant-onboarding >/dev/null 2>&1; then
     kubectl \
       --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
