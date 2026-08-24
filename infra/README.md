@@ -71,19 +71,19 @@ on every install or upgrade. They remain editable in the UI, but the next
 deployment restores the Terraform values instead of treating UI changes as
 persistent drift.
 
-`homeassistant_bootstrap_mode="seed"` adopts the chart-managed YAML files.
-Configure `homeassistant_onboarding` to have Terraform place the owner name,
-username, password, and language in the `homeassistant-onboarding` Secret. Helm
-then completes Home Assistant's built-in but undocumented onboarding flow and
-uses that temporary admin session to reconcile core and HTTP settings and to
-create missing MQTT and R2 entries through their config flows. It revokes the
-temporary login token afterward. Existing users and integration entries are
-never overwritten, so this is not a password- or credential-rotation
-mechanism. Without owner seeding, configure HTTP, MQTT, and R2 in the UI.
+`homeassistant_bootstrap_mode="seed"` adopts the chart-managed YAML files and
+requires `homeassistant_onboarding.password`. The owner name, username, and
+language default to `Home Administrator`, `admin`, and `en`. Terraform places
+those values in the `homeassistant-onboarding` Secret. Helm then completes Home
+Assistant's built-in but undocumented onboarding flow and uses the temporary
+admin session to reconcile core and HTTP settings and to create missing MQTT
+and R2 entries through their config flows. It revokes the token afterward.
+Existing users and integration entries are never overwritten, so this is not a
+password- or credential-rotation mechanism.
 
-When an R2 bucket and owner seed are both configured, that same temporary admin
-session initializes daily encrypted backups to the R2 agent with seven-copy
-retention. Terraform generates the distinct recovery password in
+When an R2 bucket is configured in seed mode, that same temporary admin session
+initializes daily encrypted backups to the R2 agent with seven-copy retention.
+Terraform generates the distinct recovery password in
 `homeassistant-backup-encryption` for that initialization.
 `homeassistant_automatic_backups` can change the first-boot retention/time or
 disable the schedule; after initialization, Home Assistant owns the settings
@@ -95,7 +95,8 @@ volume that will receive a native Home Assistant backup. The chart creates only
 a minimal temporary `configuration.yaml` needed to expose the welcome screen;
 it does not seed the owner, MQTT, R2, HTTP configuration, automations, scripts,
 or scenes. The restored `/config` replaces that temporary file. Switching back
-to `seed` afterward adopts and preserves the restored files.
+to `seed` afterward adopts and preserves the restored files, but requires the
+credentials of an existing restored owner for authenticated reconciliation.
 
 Setting `r2_backup_bucket_name` creates the private backup bucket with a
 `prevent_destroy` lifecycle guard. The account API token then also needs

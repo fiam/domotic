@@ -32,6 +32,20 @@ resource "kubernetes_secret" "cloudflared_tunnel_token_secret" {
   type = "Opaque"
 }
 
+resource "terraform_data" "homeassistant_seed_check" {
+  input = var.homeassistant_bootstrap_mode
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.homeassistant_bootstrap_mode != "seed" ||
+        nonsensitive(var.homeassistant_onboarding != null)
+      )
+      error_message = "homeassistant_onboarding with an admin password is required when homeassistant_bootstrap_mode is seed. Use restore mode for manual onboarding or native backup recovery."
+    }
+  }
+}
+
 resource "kubernetes_secret" "homeassistant_onboarding" {
   # Only the presence of the sensitive object is declassified for resource
   # cardinality; none of its fields are exposed.
@@ -53,8 +67,8 @@ resource "kubernetes_secret" "homeassistant_onboarding" {
   }
 
   data = {
-    name     = try(var.homeassistant_onboarding.name, "")
-    username = try(var.homeassistant_onboarding.username, "")
+    name     = try(var.homeassistant_onboarding.name, "Home Administrator")
+    username = try(var.homeassistant_onboarding.username, "admin")
     password = try(var.homeassistant_onboarding.password, "")
     language = try(var.homeassistant_onboarding.language, "en")
   }

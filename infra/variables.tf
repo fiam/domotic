@@ -104,7 +104,7 @@ locals {
 # ==============================================================================
 
 variable "homeassistant_bootstrap_mode" {
-  description = "First-boot behavior: seed initializes chart defaults, integrations, and an optional owner; restore starts only the native Home Assistant backup recovery flow and preserves restored configuration."
+  description = "First-boot behavior: seed requires admin credentials and initializes chart defaults and integrations; restore starts only the native Home Assistant backup recovery flow and preserves restored configuration."
   type        = string
   default     = "seed"
 
@@ -115,10 +115,10 @@ variable "homeassistant_bootstrap_mode" {
 }
 
 variable "homeassistant_onboarding" {
-  description = "Optional owner account used to complete Home Assistant's built-in but undocumented onboarding HTTP flow on a fresh volume. Existing completed onboarding is never overwritten."
+  description = "Owner account required in seed mode to authenticate Home Assistant API bootstrap. The username defaults to admin; existing completed onboarding is never overwritten."
   type = object({
-    name     = string
-    username = string
+    name     = optional(string, "Home Administrator")
+    username = optional(string, "admin")
     password = string
     language = optional(string, "en")
   })
@@ -131,11 +131,11 @@ variable "homeassistant_onboarding" {
       var.homeassistant_onboarding.username == lower(trimspace(var.homeassistant_onboarding.username)) &&
       length(regexall("\\s", var.homeassistant_onboarding.username)) == 0 &&
       length(var.homeassistant_onboarding.username) > 0 &&
-      length(var.homeassistant_onboarding.password) >= 12 &&
+      length(var.homeassistant_onboarding.password) >= 6 &&
       length(var.homeassistant_onboarding.password) <= 72 &&
       can(regex("^[a-z]{2}(-[A-Z]{2})?$", var.homeassistant_onboarding.language))
     )
-    error_message = "Home Assistant onboarding requires a name, a lowercase username without whitespace, a 12-72 character password, and a language such as en or en-GB."
+    error_message = "Home Assistant onboarding requires a name, a lowercase username without whitespace, a 6-72 character password, and a language such as en or en-GB."
   }
 }
 
@@ -186,7 +186,7 @@ variable "homeassistant_r2_backup_prefix" {
 }
 
 variable "homeassistant_automatic_backups" {
-  description = "First-boot automatic backup defaults when R2 and owner seeding are enabled. Home Assistant owns the settings after they are initialized."
+  description = "First-boot automatic backup defaults when R2 is enabled in seed mode. Home Assistant owns the settings after they are initialized."
   type = object({
     enabled          = optional(bool, true)
     retention_copies = optional(number, 7)

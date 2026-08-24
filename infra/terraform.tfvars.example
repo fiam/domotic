@@ -52,16 +52,14 @@ local_http_hostnames = {
 # Assistant can present Upload backup; the restored /config then takes over.
 homeassistant_bootstrap_mode = "seed" # or "restore"
 
-# Optional first-boot owner account in seed mode. Terraform stores these values
-# in a Kubernetes Secret and Helm completes Home Assistant's built-in but
-# undocumented onboarding HTTP flow. Existing users and completed onboarding
-# are never overwritten. Read HOME_ASSISTANT_COMPATIBILITY.md before upgrades.
-# homeassistant_onboarding = {
-#   name     = "Home Administrator"
-#   username = "admin"
-#   password = "replace-with-a-long-unique-password"
-#   language = "en"
-# }
+# Seed mode requires an admin password so Helm can authenticate every
+# chart-derived Home Assistant setting. The name, username, and language
+# default to "Home Administrator", "admin", and "en". Terraform stores the
+# values in a Kubernetes Secret; existing users are never overwritten. Use
+# restore mode instead when onboarding manually or importing a native backup.
+homeassistant_onboarding = {
+  password = "replace-with-a-long-unique-password"
+}
 
 # ==============================================================================
 # Encrypted R2 Backups (Optional)
@@ -74,10 +72,10 @@ homeassistant_bootstrap_mode = "seed" # or "restore"
 # r2_backup_location    = "weur"
 # homeassistant_r2_backup_prefix = "home-assistant"
 
-# With an R2 bucket and homeassistant_onboarding, seed mode configures daily,
-# encrypted R2 backups automatically and retains seven copies. Omit this block
-# for those defaults. A null time uses Home Assistant's randomized early-morning
-# schedule; later changes made in Home Assistant are preserved.
+# With an R2 bucket, seed mode configures daily encrypted R2 backups
+# automatically and retains seven copies. Omit this block for those defaults. A
+# null time uses Home Assistant's randomized early-morning schedule; later
+# changes made in Home Assistant are preserved.
 # homeassistant_automatic_backups = {
 #   enabled          = true
 #   retention_copies = 7

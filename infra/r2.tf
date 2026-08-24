@@ -44,7 +44,6 @@ locals {
   homeassistant_automatic_backups_enabled = (
     var.r2_backup_bucket_name != null &&
     var.homeassistant_bootstrap_mode == "seed" &&
-    nonsensitive(var.homeassistant_onboarding != null) &&
     var.homeassistant_automatic_backups.enabled
   )
 }

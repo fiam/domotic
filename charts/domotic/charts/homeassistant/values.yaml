@@ -18,13 +18,13 @@ configSeed:
     pullPolicy: IfNotPresent
   resources: {}
 
-# Create the first owner account through Home Assistant's built-in but
-# undocumented onboarding HTTP flow. The authenticated hook also creates
-# missing MQTT and R2 entries through their config flows and reconciles HTTP
-# proxy settings. Read HOME_ASSISTANT_COMPATIBILITY.md before changing the HA
-# image. Terraform creates the referenced Secret when homeassistant_onboarding
-# is configured. The hook preserves completed onboarding and never replaces an
-# existing owner or password.
+# Create or authenticate the admin account through Home Assistant's built-in
+# but undocumented onboarding/login flows. Terraform seed mode always enables
+# this hook and supplies the Secret; restore mode disables it. The authenticated
+# hook also creates missing MQTT and R2 entries through their config flows and
+# reconciles HTTP proxy settings. It preserves completed onboarding and never
+# replaces an existing owner or password. Read HOME_ASSISTANT_COMPATIBILITY.md
+# before changing the Home Assistant image.
 onboarding:
   enabled: false
   activeDeadlineSeconds: 600
@@ -37,7 +37,7 @@ onboarding:
   resources: {}
 
 # Create Home Assistant's official Cloudflare R2 backup integration through its
-# config flow when owner seeding is enabled and no matching entry exists.
+# config flow in authenticated seed mode when no matching entry exists.
 # Terraform supplies this block and creates the referenced Secret when
 # r2_backup_bucket_name is configured.
 r2Backup:
@@ -50,9 +50,9 @@ r2Backup:
     accessKeyIdKey: access_key_id
     secretAccessKeyKey: secret_access_key
   # With Terraform, this defaults to daily encrypted backups retained for
-  # seven copies when R2 and owner seeding are both enabled. The onboarding
-  # hook initializes only an unconfigured backup schedule; later UI changes
-  # remain owned by Home Assistant.
+  # seven copies when R2 is enabled in seed mode. The onboarding hook
+  # initializes only an unconfigured backup schedule; later UI changes remain
+  # owned by Home Assistant.
   automatic:
     enabled: false
     agentName: ""

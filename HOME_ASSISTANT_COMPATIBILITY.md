@@ -55,8 +55,9 @@ authenticated hook creates MQTT only when no MQTT entry exists, creates R2 only
 when no entry matches the declared bucket title, and reconciles HTTP settings
 through Home Assistant's trial-and-promotion workflow. It never updates
 existing integration credentials. Restore mode must never run the hook or any
-config flow. API-based setup requires owner seeding; manual onboarding leaves
-HTTP, MQTT, R2, and backups for the user to configure in the UI.
+config flow. Terraform seed mode requires admin credentials so these
+chart-derived settings are never silently skipped. Restore mode remains the
+credential-free path for manual onboarding or native backup recovery.
 
 The token exchange and revocation endpoints are documented, but the automated
 login-flow and onboarding calls around them remain implementation-coupled. Do
@@ -95,7 +96,8 @@ required payloads and migration behavior more precisely than user-facing docs.
    payloads, onboarding client, and tests before changing the image pin.
 3. Run `task check`.
 4. Create a fresh Kind cluster, fresh Terraform state namespace, fresh R2
-   bucket, and fresh Home Assistant PVC. Enable `homeassistant_onboarding`.
+   bucket, and fresh Home Assistant PVC. Supply the required seed-mode
+   `homeassistant_onboarding` credentials.
 5. Deploy and verify that the onboarding hook completes without using a Job
    retry, the generated owner can log in, MQTT connects, Cloudflare R2 loads
    without setup errors, the HTTP pending configuration is promoted, and both

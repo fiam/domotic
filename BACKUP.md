@@ -17,7 +17,7 @@ The archive contains:
 - the live `homeassistant-r2-credentials` Secret when R2 is enabled;
 - the native `homeassistant-backup-encryption` recovery Secret when R2 is
   enabled;
-- the optional first-boot `homeassistant-onboarding` Secret; and
+- the seed-mode `homeassistant-onboarding` Secret when present; and
 - a manifest with the backup timestamp and source cluster context.
 
 It does **not** back up PersistentVolume contents such as Home Assistant's
@@ -106,7 +106,7 @@ Terraform uses the same account token to derive the R2 S3 credential pair:
 - Secret Access Key: the SHA-256 hash of the account API token value.
 
 It stores only that pair in the `homeassistant-r2-credentials` Kubernetes
-Secret. With owner seeding enabled, the Helm hook creates Home Assistant's
+Secret. In seed mode, the authenticated Helm hook creates Home Assistant's
 official **Cloudflare R2** integration through its config flow with the bucket,
 endpoint, credentials, and `home-assistant` prefix. The flow validates access
 to the bucket before saving the entry. The raw `cfat_...` bearer token is never
@@ -117,13 +117,13 @@ expose access to R2 objects allowed by the account token, but would not expose
 the original bearer token or grant access to DNS and tunnel APIs. Use a
 separate bucket-scoped R2 token only if you later want stronger isolation.
 
-When `homeassistant_onboarding` is also configured, seed mode uses that owner's
-temporary authenticated session to initialize automatic backups. The defaults
-are one encrypted backup every day, the R2 bucket as the only location, seven
-retained copies, and Home Assistant's randomized early-morning start time.
-Terraform generates a distinct 32-character encryption password and stores it
-in the `homeassistant-backup-encryption` Secret. The hook marks the backup setup
-as configured only after the matching R2 agent is available.
+Seed mode requires `homeassistant_onboarding` and uses that owner's temporary
+authenticated session to initialize automatic backups. The defaults are one
+encrypted backup every day, the R2 bucket as the only location, seven retained
+copies, and Home Assistant's randomized early-morning start time. Terraform
+generates a distinct 32-character encryption password and stores it in the
+`homeassistant-backup-encryption` Secret. The hook marks the backup setup as
+configured only after the matching R2 agent is available.
 
 Override the first-boot defaults when needed:
 
@@ -140,10 +140,9 @@ default time and add jitter. These values initialize a fresh, unconfigured
 schedule; subsequent changes under **Settings > System > Backups** are
 preserved instead of being reconciled by Terraform or Helm.
 
-The authenticated integration and schedule setup requires
-`homeassistant_onboarding`. With manual onboarding, add the R2 location and
-configure its schedule once in the UI. Existing volumes and native restores
-are never modified.
+Existing integration entries and native restores are never modified. When
+switching a restored installation back to seed mode, provide credentials for
+an existing restored owner so the hook can preserve or initialize the schedule.
 
 For a schedule initialized by this hook, preserve the generated recovery
 password outside the cluster. The repository backup task includes its Secret
@@ -168,8 +167,7 @@ Secret. Store that existing key separately before relying on those backups.
 
 The chart detects a matching **Cloudflare R2** config entry and preserves it.
 It creates only a missing entry, through Home Assistant's own validated config
-flow. If owner seeding is disabled, add **Cloudflare R2** once under **Settings
-> Devices & services** and copy the values from the Kubernetes Secret instead.
+flow.
 
 ## 4. Create the encryption identity
 

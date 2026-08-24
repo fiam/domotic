@@ -91,7 +91,7 @@ output "helm_values_yaml" {
         mode = var.homeassistant_bootstrap_mode
       }
       onboarding = {
-        enabled = nonsensitive(var.homeassistant_onboarding != null) && var.homeassistant_bootstrap_mode == "seed"
+        enabled = var.homeassistant_bootstrap_mode == "seed"
         existingSecret = {
           name        = try(kubernetes_secret.homeassistant_onboarding[0].metadata[0].name, "")
           nameKey     = "name"

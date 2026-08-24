@@ -54,17 +54,15 @@ cp examples/values-production.yaml values.yaml
 ```
 
 Edit `infra/terraform.tfvars` with the Cloudflare account, domain, and Zigbee
-network configuration. For a new Home Assistant instance, optionally configure
-the first owner account; its password goes only into the ignored variables,
-Terraform state, and a Kubernetes Secret:
+network configuration. Seed mode requires an admin password so Helm can
+authenticate all Home Assistant API configuration. The username defaults to
+`admin`; the password goes only into the ignored variables, Terraform state,
+and a Kubernetes Secret:
 
 ```hcl
 homeassistant_bootstrap_mode = "seed"
 homeassistant_onboarding = {
-  name     = "Home Administrator"
-  username = "admin"
   password = "replace-with-a-long-unique-password"
-  language = "en"
 }
 ```
 
@@ -81,7 +79,8 @@ When restoring a native Home Assistant backup onto a blank volume, use
 `homeassistant_bootstrap_mode = "restore"` and omit the owner block until the
 restore finishes. This leaves Home Assistant's **Upload backup** onboarding
 path available. Switching back to `seed` afterward does not overwrite restored
-configuration, storage, automations, scripts, or scenes.
+configuration, storage, automations, scripts, or scenes. Supply credentials for
+an existing restored owner before switching back so the API hook can log in.
 
 Edit `values.yaml` with the serial device, adapter type,
 Home Assistant settings, storage, and route parent references described in
@@ -155,10 +154,9 @@ task backup:list
 
 Follow [BACKUP.md](BACKUP.md) first to configure the bucket, account token ID,
 and an independently stored age identity. Terraform derives one R2 credential
-pair from the same account token. With owner seeding enabled, the authenticated
-hook creates Home Assistant's official R2 backup location through its config
-flow and defaults to daily encrypted R2 backups with seven-copy retention.
-With manual onboarding, add the R2 integration in the UI. Preserve the
+pair from the same account token. In seed mode, the authenticated hook creates
+Home Assistant's official R2 backup location through its config flow and
+defaults to daily encrypted R2 backups with seven-copy retention. Preserve the
 generated `homeassistant-backup-encryption` password outside the cluster; the
 repository backup includes it inside the separate age-encrypted archive. The
 repository backup workflow never uploads plaintext secrets and restores into
@@ -208,7 +206,17 @@ Gateway API definitions stay compatible.
 
 For an isolated end-to-end Cloudflare test, use a separate ignored variables
 file and state namespace. Give it distinct tunnel, hostname, bucket, namespace,
-and release names, then run:
+and release names. Disposable Kind environments use the deliberately insecure
+`admin`/`foobar` account; never use it outside local development:
+
+```hcl
+homeassistant_bootstrap_mode = "seed"
+homeassistant_onboarding = {
+  password = "foobar"
+}
+```
+
+Then run:
 
 ```sh
 task dev:create CLUSTER_NAME=ha KUBE_CONTEXT=kind-ha

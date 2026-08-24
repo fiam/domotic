@@ -45,6 +45,9 @@ run "empty_namespace_first_apply" {
     cloudflare_domain     = "example.com"
     kubernetes_namespace  = "domotic-test"
     generate_zigbee_keys  = true
+    homeassistant_onboarding = {
+      password = "a-long-test-password"
+    }
     local_http_urls = {
       homeassistant = "http://homeassistant.local:8080"
       zigbee2mqtt   = "http://zigbee2mqtt.local:8080"
@@ -79,11 +82,35 @@ run "empty_namespace_first_apply" {
 
   assert {
     condition = (
+      nonsensitive(kubernetes_secret.homeassistant_onboarding[0].data["username"]) ==
+      "admin"
+    )
+    error_message = "Seed mode must default the Home Assistant username to admin."
+  }
+
+  assert {
+    condition = (
       yamldecode(output.helm_values_yaml).zigbee2mqtt.config.frontend.url ==
       "http://zigbee2mqtt.local:8080"
     )
     error_message = "Zigbee2MQTT must receive its local URL through frontend.url."
   }
+}
+
+run "seed_requires_an_admin_password" {
+  command = plan
+
+  variables {
+    cloudflare_api_token  = "mock-api-token"
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "domotic-test"
+    generate_zigbee_keys  = true
+  }
+
+  expect_failures = [
+    terraform_data.homeassistant_seed_check,
+  ]
 }
 
 run "restored_identity_must_match_radio_settings" {
@@ -101,6 +128,9 @@ run "restored_identity_must_match_radio_settings" {
     zigbee_channel          = 15
     zigbee_expected_pan_id  = 6754
     zigbee_expected_channel = 20
+    homeassistant_onboarding = {
+      password = "a-long-test-password"
+    }
   }
 
   expect_failures = [
@@ -119,7 +149,6 @@ run "homeassistant_owner_seed_uses_a_secret" {
     generate_zigbee_keys  = true
     homeassistant_onboarding = {
       name     = "Home Administrator"
-      username = "admin"
       password = "a-long-test-password"
       language = "en"
     }
@@ -129,9 +158,11 @@ run "homeassistant_owner_seed_uses_a_secret" {
     condition = (
       yamldecode(output.helm_values_yaml).homeassistant.onboarding.enabled &&
       yamldecode(output.helm_values_yaml).homeassistant.onboarding.existingSecret.name ==
-      "homeassistant-onboarding"
+      "homeassistant-onboarding" &&
+      nonsensitive(kubernetes_secret.homeassistant_onboarding[0].data["username"]) ==
+      "admin"
     )
-    error_message = "Seed mode must pass only the onboarding Secret reference to Helm."
+    error_message = "Seed mode must enable the onboarding Secret and default its username to admin."
   }
 }
 
