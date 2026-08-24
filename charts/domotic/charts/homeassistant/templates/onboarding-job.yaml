@@ -30,6 +30,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - python3
+            - -u
             - -c
           args:
             - |
@@ -44,6 +45,8 @@ spec:
 
               base_url = os.environ["HOMEASSISTANT_URL"].rstrip("/")
               client_id = os.environ["HOMEASSISTANT_CLIENT_ID"]
+              mqtt_enabled = os.environ.get("MQTT_ENABLED") == "true"
+              r2_enabled = os.environ.get("R2_ENABLED") == "true"
               automatic_backups_enabled = (
                   os.environ.get("AUTOMATIC_BACKUP_ENABLED") == "true"
               )
@@ -65,7 +68,7 @@ spec:
                   req = urllib.request.Request(
                       f"{base_url}{path}", data=data, headers=headers, method=method
                   )
-                  with urllib.request.urlopen(req, timeout=10) as response:
+                  with urllib.request.urlopen(req, timeout=30) as response:
                       content = response.read()
                   return json.loads(content) if content else None
 
@@ -108,6 +111,48 @@ spec:
                       return current
                   return request("/api/onboarding")
 
+              def create_config_entry(handler, payload, token):
+                  flow = request(
+                      "/api/config/config_entries/flow",
+                      method="POST",
+                      payload={"handler": handler},
+                      token=token,
+                  )
+                  if flow.get("type") == "abort" and flow.get("reason") in (
+                      "already_configured",
+                      "single_instance_allowed",
+                  ):
+                      print(f"Preserving the existing {handler} config entry")
+                      return
+                  if flow.get("type") != "form":
+                      raise RuntimeError(
+                          f"{handler} config flow could not start: "
+                          f"{flow.get('type', 'unknown')}/"
+                          f"{flow.get('reason', 'unknown')}"
+                      )
+
+                  result = request(
+                      f"/api/config/config_entries/flow/{flow['flow_id']}",
+                      method="POST",
+                      payload=payload,
+                      token=token,
+                  )
+                  if result.get("type") == "create_entry":
+                      print(f"Created {handler} through its config flow")
+                      return
+                  if result.get("type") == "abort" and result.get("reason") in (
+                      "already_configured",
+                      "single_instance_allowed",
+                  ):
+                      print(f"Preserving the existing {handler} config entry")
+                      return
+                  errors = result.get("errors", {})
+                  raise RuntimeError(
+                      f"{handler} config flow failed at "
+                      f"{result.get('step_id', 'unknown')}: "
+                      f"{sorted(errors.items())}"
+                  )
+
               async def configure_homeassistant(token):
                   # aiohttp is part of the pinned Home Assistant image. The
                   # WebSocket commands are private and version-coupled; keep
@@ -124,49 +169,79 @@ spec:
                           "",
                       )
                   )
-                  timeout = aiohttp.ClientTimeout(total=15)
-                  async with aiohttp.ClientSession(timeout=timeout) as session:
-                      async with session.ws_connect(websocket_url) as websocket:
-                          auth_required = await websocket.receive_json()
-                          if auth_required.get("type") != "auth_required":
-                              raise RuntimeError(
-                                  "Home Assistant WebSocket did not request authentication"
-                              )
-                          await websocket.send_json(
-                              {"type": "auth", "access_token": token}
-                          )
-                          auth_result = await websocket.receive_json()
-                          if auth_result.get("type") != "auth_ok":
-                              raise RuntimeError(
-                                  "Home Assistant rejected backup configuration authentication"
-                              )
+                  timeout = aiohttp.ClientTimeout(total=30)
+                  next_message_id = 1
+                  websocket_errors = (
+                      aiohttp.ClientError,
+                      aiohttp.client_exceptions.WSMessageTypeError,
+                      asyncio.TimeoutError,
+                      OSError,
+                      TypeError,
+                  )
 
-                          next_message_id = 1
-
-                          async def command(command_type, **payload):
-                              nonlocal next_message_id
-                              message_id = next_message_id
-                              next_message_id += 1
+                  async def connect_websocket(session):
+                      for attempt in range(120):
+                          websocket = None
+                          try:
+                              websocket = await session.ws_connect(websocket_url)
+                              auth_required = await websocket.receive_json()
+                              if auth_required.get("type") != "auth_required":
+                                  raise RuntimeError(
+                                      "Home Assistant WebSocket did not request authentication"
+                                  )
                               await websocket.send_json(
-                                  {
-                                      "id": message_id,
-                                      "type": command_type,
-                                      **payload,
-                                  }
+                                  {"type": "auth", "access_token": token}
                               )
-                              while True:
-                                  response = await websocket.receive_json()
-                                  if response.get("id") != message_id:
-                                      continue
-                                  if not response.get("success"):
-                                      error = response.get("error", {})
-                                      raise RuntimeError(
-                                          f"{command_type} failed: "
-                                          f"{error.get('code', 'unknown')}"
-                                      )
-                                  return response.get("result")
+                              auth_result = await websocket.receive_json()
+                          except websocket_errors:
+                              if websocket is not None:
+                                  await websocket.close()
+                              if attempt == 119:
+                                  raise RuntimeError(
+                                      "Home Assistant WebSocket did not become ready"
+                                  )
+                              await asyncio.sleep(2)
+                              continue
+                          if auth_result.get("type") != "auth_ok":
+                              await websocket.close()
+                              raise RuntimeError(
+                                  "Home Assistant rejected bootstrap authentication"
+                              )
+                          return websocket
 
+                  async def command(websocket, command_type, **payload):
+                      nonlocal next_message_id
+                      message_id = next_message_id
+                      next_message_id += 1
+                      await websocket.send_json(
+                          {
+                              "id": message_id,
+                              "type": command_type,
+                              **payload,
+                          }
+                      )
+                      while True:
+                          response = await websocket.receive_json()
+                          if response.get("id") != message_id:
+                              continue
+                          if not response.get("success"):
+                              error = response.get("error", {})
+                              raise RuntimeError(
+                                  f"{command_type} failed: "
+                                  f"{error.get('code', 'unknown')}"
+                              )
+                          return response.get("result")
+
+                  def http_config_matches(config, desired):
+                      return config is not None and all(
+                          config.get(key) == value for key, value in desired.items()
+                      )
+
+                  async with aiohttp.ClientSession(timeout=timeout) as session:
+                      websocket = await connect_websocket(session)
+                      try:
                           await command(
+                              websocket,
                               "config/core/update",
                               location_name=os.environ[
                                   "HOMEASSISTANT_LOCATION_NAME"
@@ -183,92 +258,248 @@ spec:
                               "the WebSocket API"
                           )
 
-                          if not automatic_backups_enabled:
-                              return
-
-                          config_result = await command("backup/config/info")
-                          if config_result["config"].get(
-                              "automatic_backups_configured"
-                          ):
-                              print(
-                                  "Home Assistant automatic backups are already "
-                                  "configured; preserving them"
+                          mqtt_entries = []
+                          if mqtt_enabled:
+                              mqtt_entries = await command(
+                                  websocket, "config_entries/get", domain="mqtt"
                               )
-                              existing_password = config_result["config"].get(
-                                  "create_backup", {}
-                              ).get("password")
-                              if existing_password != os.environ.get(
-                                  "AUTOMATIC_BACKUP_PASSWORD"
+                          r2_entries = []
+                          if r2_enabled:
+                              r2_entries = await command(
+                                  websocket,
+                                  "config_entries/get",
+                                  domain="cloudflare_r2",
+                              )
+                      finally:
+                          await websocket.close()
+
+                      if mqtt_enabled:
+                          if mqtt_entries:
+                              print("Preserving the existing MQTT config entry")
+                          else:
+                              create_config_entry(
+                                  "mqtt",
+                                  {
+                                      "broker": os.environ["MQTT_SERVER"],
+                                      "port": int(os.environ["MQTT_PORT"]),
+                                      "protocol": "5",
+                                      "other_settings": {
+                                          "transport": "tcp",
+                                          "set_client_cert": False,
+                                          "set_ca_cert": "off",
+                                      },
+                                  },
+                                  token,
+                              )
+
+                      if r2_enabled:
+                          matching_r2_entries = [
+                              entry
+                              for entry in r2_entries
+                              if entry.get("title") == os.environ["R2_BUCKET"]
+                          ]
+                          if matching_r2_entries:
+                              print(
+                                  "Preserving the existing Cloudflare R2 config entry"
+                              )
+                          else:
+                              create_config_entry(
+                                  "cloudflare_r2",
+                                  {
+                                      "access_key_id": os.environ[
+                                          "R2_ACCESS_KEY_ID"
+                                      ],
+                                      "secret_access_key": os.environ[
+                                          "R2_SECRET_ACCESS_KEY"
+                                      ],
+                                      "bucket": os.environ["R2_BUCKET"],
+                                      "endpoint_url": os.environ["R2_ENDPOINT_URL"],
+                                      "prefix": os.environ.get("R2_PREFIX", ""),
+                                  },
+                                  token,
+                              )
+
+                      desired_http_config = {
+                          "server_port": 8123,
+                          "use_x_forwarded_for": (
+                              os.environ["HTTP_USE_X_FORWARDED_FOR"] == "true"
+                          ),
+                          "trusted_proxies": json.loads(
+                              os.environ["HTTP_TRUSTED_PROXIES"]
+                          ),
+                      }
+                      websocket = await connect_websocket(session)
+                      http_info = await command(websocket, "http/config")
+                      if (
+                          http_config_matches(
+                              http_info.get("stable"), desired_http_config
+                          )
+                          and http_info.get("pending") is None
+                          and http_info.get("active_config_type") == "stable"
+                      ):
+                          print("Home Assistant HTTP settings already match")
+                      else:
+                          try:
+                              configure_result = await command(
+                                  websocket,
+                                  "http/config/configure",
+                                  config=desired_http_config,
+                              )
+                          except websocket_errors:
+                              # HA may close the socket as soon as it starts
+                              # the requested restart. The state check below
+                              # determines whether the configuration applied.
+                              configure_result = {"restart": True}
+                          await websocket.close()
+                          websocket = None
+                          if configure_result.get("restart"):
+                              print(
+                                  "Restarting Home Assistant to trial HTTP settings"
+                              )
+
+                          websocket = None
+                          for _ in range(90):
+                              if websocket is None:
+                                  websocket = await connect_websocket(session)
+                              try:
+                                  http_info = await command(
+                                      websocket, "http/config"
+                                  )
+                              except websocket_errors:
+                                  await websocket.close()
+                                  websocket = None
+                                  await asyncio.sleep(2)
+                                  continue
+                              pending = http_info.get("pending")
+                              if (
+                                  http_config_matches(
+                                      http_info.get("stable"), desired_http_config
+                                  )
+                                  and pending is None
+                                  and http_info.get("active_config_type") == "stable"
                               ):
                                   print(
-                                      "The preserved schedule uses its existing "
-                                      "emergency key, not the seed Secret"
+                                      "Reconciled Home Assistant HTTP settings "
+                                      "through the WebSocket API"
                                   )
-                              return
-
-                          backup_agent = None
-                          for _ in range(60):
-                              agents_result = await command("backup/agents/info")
-                              matching_agents = [
-                                  agent
-                                  for agent in agents_result["agents"]
-                                  if agent["name"] == os.environ["R2_BACKUP_AGENT_NAME"]
-                                  and agent["agent_id"].startswith("cloudflare_r2.")
-                              ]
-                              if len(matching_agents) == 1:
-                                  backup_agent = matching_agents[0]
                                   break
-                              if len(matching_agents) > 1:
+                              if pending and pending.get("error") is not None:
                                   raise RuntimeError(
-                                      "Multiple Cloudflare R2 backup agents match the bucket"
+                                      "Home Assistant rejected the pending HTTP settings: "
+                                      f"{pending.get('error')}"
                                   )
+                              if (
+                                  http_info.get("active_config_type") == "pending"
+                                  and http_config_matches(
+                                      pending, desired_http_config
+                                  )
+                              ):
+                                  await command(websocket, "http/config/promote")
+                                  print(
+                                      "Promoted Home Assistant HTTP settings through "
+                                      "the WebSocket API"
+                                  )
+                                  break
                               await asyncio.sleep(2)
-
-                          if backup_agent is None:
+                          else:
                               raise RuntimeError(
-                                  "Cloudflare R2 backup agent did not become available"
+                                  "Home Assistant did not activate the pending HTTP settings"
                               )
 
-                          agent_id = backup_agent["agent_id"]
-                          retention_copies = int(
-                              os.environ["AUTOMATIC_BACKUP_RETENTION_COPIES"]
-                          )
-                          backup_time = (
-                              os.environ.get("AUTOMATIC_BACKUP_TIME", "").strip()
-                              or None
-                          )
-                          await command(
-                              "backup/config/update",
-                              agents={
-                                  agent_id: {
-                                      "protected": True,
-                                      "retention": None,
-                                  }
-                              },
-                              automatic_backups_configured=True,
-                              create_backup={
-                                  "agent_ids": [agent_id],
-                                  "include_addons": [],
-                                  "include_all_addons": False,
-                                  "include_database": True,
-                                  "include_folders": [],
-                                  "name": None,
-                                  "password": os.environ["AUTOMATIC_BACKUP_PASSWORD"],
-                              },
-                              retention={
-                                  "copies": retention_copies,
-                                  "days": None,
-                              },
-                              schedule={
-                                  "days": [],
-                                  "recurrence": "daily",
-                                  "time": backup_time,
-                              },
-                          )
+                      if not automatic_backups_enabled:
+                          await websocket.close()
+                          return
+
+                      config_result = await command(
+                          websocket, "backup/config/info"
+                      )
+                      if config_result["config"].get(
+                          "automatic_backups_configured"
+                      ):
                           print(
-                              "Configured daily encrypted Home Assistant backups "
-                              "to Cloudflare R2"
+                              "Home Assistant automatic backups are already "
+                              "configured; preserving them"
                           )
+                          existing_password = config_result["config"].get(
+                              "create_backup", {}
+                          ).get("password")
+                          if existing_password != os.environ.get(
+                              "AUTOMATIC_BACKUP_PASSWORD"
+                          ):
+                              print(
+                                  "The preserved schedule uses its existing "
+                                  "emergency key, not the seed Secret"
+                              )
+                          await websocket.close()
+                          return
+
+                      backup_agent = None
+                      for _ in range(60):
+                          agents_result = await command(
+                              websocket, "backup/agents/info"
+                          )
+                          matching_agents = [
+                              agent
+                              for agent in agents_result["agents"]
+                              if agent["name"] == os.environ["R2_BACKUP_AGENT_NAME"]
+                              and agent["agent_id"].startswith("cloudflare_r2.")
+                          ]
+                          if len(matching_agents) == 1:
+                              backup_agent = matching_agents[0]
+                              break
+                          if len(matching_agents) > 1:
+                              raise RuntimeError(
+                                  "Multiple Cloudflare R2 backup agents match the bucket"
+                              )
+                          await asyncio.sleep(2)
+
+                      if backup_agent is None:
+                          raise RuntimeError(
+                              "Cloudflare R2 backup agent did not become available"
+                          )
+
+                      agent_id = backup_agent["agent_id"]
+                      retention_copies = int(
+                          os.environ["AUTOMATIC_BACKUP_RETENTION_COPIES"]
+                      )
+                      backup_time = (
+                          os.environ.get("AUTOMATIC_BACKUP_TIME", "").strip()
+                          or None
+                      )
+                      await command(
+                          websocket,
+                          "backup/config/update",
+                          agents={
+                              agent_id: {
+                                  "protected": True,
+                                  "retention": None,
+                              }
+                          },
+                          automatic_backups_configured=True,
+                          create_backup={
+                              "agent_ids": [agent_id],
+                              "include_addons": [],
+                              "include_all_addons": False,
+                              "include_database": True,
+                              "include_folders": [],
+                              "name": None,
+                              "password": os.environ["AUTOMATIC_BACKUP_PASSWORD"],
+                          },
+                          retention={
+                              "copies": retention_copies,
+                              "days": None,
+                          },
+                          schedule={
+                              "days": [],
+                              "recurrence": "daily",
+                              "time": backup_time,
+                          },
+                      )
+                      print(
+                          "Configured daily encrypted Home Assistant backups "
+                          "to Cloudflare R2"
+                      )
+                      await websocket.close()
 
               status = None
               onboarding_complete = False
@@ -365,11 +596,22 @@ spec:
                           sys.exit("Home Assistant onboarding did not complete")
                   asyncio.run(configure_homeassistant(access_token))
               finally:
-                  request(
-                      "/auth/revoke",
-                      method="POST",
-                      form={"token": refresh_token},
-                  )
+                  for revoke_attempt in range(60):
+                      try:
+                          request(
+                              "/auth/revoke",
+                              method="POST",
+                              form={"token": refresh_token},
+                          )
+                          break
+                      except (OSError, urllib.error.URLError):
+                          if revoke_attempt == 59:
+                              print(
+                                  "Home Assistant did not become ready to revoke "
+                                  "the temporary refresh token"
+                              )
+                              break
+                          time.sleep(2)
 
               print("Home Assistant onboarding is complete")
           env:
@@ -383,6 +625,38 @@ spec:
               value: {{ required "config.external_url is required when onboarding is enabled" .Values.config.external_url | quote }}
             - name: HOMEASSISTANT_INTERNAL_URL
               value: {{ required "config.internal_url is required when onboarding is enabled" .Values.config.internal_url | quote }}
+            - name: HTTP_USE_X_FORWARDED_FOR
+              value: {{ .Values.config.http.useXForwardedFor | quote }}
+            - name: HTTP_TRUSTED_PROXIES
+              value: {{ .Values.config.http.trustedProxies | toJson | quote }}
+            - name: MQTT_ENABLED
+              value: {{ (and .Values.config.mqtt (not (empty .Values.config.mqtt.server)) (gt (int .Values.config.mqtt.port) 0)) | quote }}
+          {{- if and .Values.config.mqtt .Values.config.mqtt.server .Values.config.mqtt.port }}
+            - name: MQTT_SERVER
+              value: {{ .Values.config.mqtt.server | quote }}
+            - name: MQTT_PORT
+              value: {{ .Values.config.mqtt.port | quote }}
+          {{- end }}
+            - name: R2_ENABLED
+              value: {{ .Values.r2Backup.enabled | quote }}
+          {{- if .Values.r2Backup.enabled }}
+            - name: R2_BUCKET
+              value: {{ required "r2Backup.bucket is required when R2 backup is enabled" .Values.r2Backup.bucket | quote }}
+            - name: R2_ENDPOINT_URL
+              value: {{ required "r2Backup.endpointUrl is required when R2 backup is enabled" .Values.r2Backup.endpointUrl | quote }}
+            - name: R2_PREFIX
+              value: {{ .Values.r2Backup.prefix | default "" | quote }}
+            - name: R2_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "r2Backup.existingSecret.name is required when R2 backup is enabled" .Values.r2Backup.existingSecret.name }}
+                  key: {{ .Values.r2Backup.existingSecret.accessKeyIdKey }}
+            - name: R2_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.r2Backup.existingSecret.name }}
+                  key: {{ .Values.r2Backup.existingSecret.secretAccessKeyKey }}
+          {{- end }}
             - name: ADMIN_NAME
               valueFrom:
                 secretKeyRef:

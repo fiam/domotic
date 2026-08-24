@@ -71,13 +71,15 @@ on every install or upgrade. They remain editable in the UI, but the next
 deployment restores the Terraform values instead of treating UI changes as
 persistent drift.
 
-`homeassistant_bootstrap_mode="seed"` enables create-only configuration, HTTP,
-MQTT, R2, and optional owner bootstrap. Configure
-`homeassistant_onboarding` to have Terraform place the owner name, username,
-password, and language in the `homeassistant-onboarding` Secret; Helm completes
-Home Assistant's built-in but undocumented onboarding HTTP flow and revokes the
-temporary login token. Existing users are never overwritten, so this is not a
-password-rotation mechanism.
+`homeassistant_bootstrap_mode="seed"` adopts the chart-managed YAML files.
+Configure `homeassistant_onboarding` to have Terraform place the owner name,
+username, password, and language in the `homeassistant-onboarding` Secret. Helm
+then completes Home Assistant's built-in but undocumented onboarding flow and
+uses that temporary admin session to reconcile core and HTTP settings and to
+create missing MQTT and R2 entries through their config flows. It revokes the
+temporary login token afterward. Existing users and integration entries are
+never overwritten, so this is not a password- or credential-rotation
+mechanism. Without owner seeding, configure HTTP, MQTT, and R2 in the UI.
 
 When an R2 bucket and owner seed are both configured, that same temporary admin
 session initializes daily encrypted backups to the R2 agent with seven-copy
@@ -91,9 +93,9 @@ emergency-kit key, which may differ from the Terraform Secret.
 Use `homeassistant_bootstrap_mode="restore"` before deploying onto a blank
 volume that will receive a native Home Assistant backup. The chart creates only
 a minimal temporary `configuration.yaml` needed to expose the welcome screen;
-it does not seed the owner, MQTT, R2, HTTP storage, automations, scripts, or
-scenes. The restored `/config` replaces that temporary file. Switching back to
-`seed` afterward adopts and preserves the restored files.
+it does not seed the owner, MQTT, R2, HTTP configuration, automations, scripts,
+or scenes. The restored `/config` replaces that temporary file. Switching back
+to `seed` afterward adopts and preserves the restored files.
 
 Setting `r2_backup_bucket_name` creates the private backup bucket with a
 `prevent_destroy` lifecycle guard. The account API token then also needs

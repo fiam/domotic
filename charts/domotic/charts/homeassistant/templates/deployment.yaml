@@ -79,37 +79,6 @@ spec:
                 fi
               done
 
-              # Home Assistant 2026.8 moved HTTP server and trusted-proxy
-              # settings into UI-managed storage. Seed a confirmed stable
-              # configuration only on a fresh volume so reverse proxies work
-              # immediately without a five-minute trial and rollback.
-              http_target="/config/.storage/http"
-              if [ ! -f "$http_target" ]; then
-                echo "Initializing Home Assistant HTTP settings"
-                mkdir -p "$(dirname "$http_target")"
-                cp /defaults/.storage-http "$http_target"
-              else
-                echo "Preserving existing Home Assistant HTTP settings"
-              fi
-
-              # Config entries are user-managed after Home Assistant starts.
-              # Seed them only on a fresh volume; never overwrite integrations
-              # that were subsequently added or changed through the UI.
-              target="/config/.storage/core.config_entries"
-              if [ ! -f "$target" ]; then
-                echo "Initializing Home Assistant config entries"
-                mkdir -p "$(dirname "$target")"
-                cp /defaults/.storage-core.config_entries /tmp/core.config_entries
-                {{- if .Values.r2Backup.enabled }}
-                sed -i \
-                  -e "s/__R2_ACCESS_KEY_ID__/${R2_ACCESS_KEY_ID}/g" \
-                  -e "s/__R2_SECRET_ACCESS_KEY__/${R2_SECRET_ACCESS_KEY}/g" \
-                  /tmp/core.config_entries
-                {{- end }}
-                cp /tmp/core.config_entries "$target"
-              else
-                echo "Preserving existing Home Assistant config entries"
-              fi
               {{- else }}
               # A blank volume needs a minimal configuration to start the
               # frontend and expose Home Assistant's native restore flow. The
@@ -122,19 +91,6 @@ spec:
                 echo "Native-restore mode: preserving all Home Assistant configuration"
               fi
               {{- end }}
-          {{- if and .Values.r2Backup.enabled (eq .Values.configSeed.mode "seed") }}
-          env:
-            - name: R2_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ required "r2Backup.existingSecret.name is required when R2 backup is enabled" .Values.r2Backup.existingSecret.name }}
-                  key: {{ .Values.r2Backup.existingSecret.accessKeyIdKey }}
-            - name: R2_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.r2Backup.existingSecret.name }}
-                  key: {{ .Values.r2Backup.existingSecret.secretAccessKeyKey }}
-          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /config

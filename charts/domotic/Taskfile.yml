@@ -96,10 +96,19 @@ tasks:
         printf '%s\n' "$seed_render" | grep -q 'name: domotic-homeassistant-onboarding'
         printf '%s\n' "$seed_render" | grep -q 'Home Assistant onboarding is complete'
         printf '%s\n' "$seed_render" | grep -q 'config/core/update'
+        printf '%s\n' "$seed_render" | grep -q '/api/config/config_entries/flow'
+        printf '%s\n' "$seed_render" | grep -q '"http/config/configure"'
+        printf '%s\n' "$seed_render" | grep -q '"http/config/promote"'
+        printf '%s\n' "$seed_render" | grep -q 'Created {handler} through its config flow'
         printf '%s\n' "$seed_render" | grep -q 'name: HOMEASSISTANT_EXTERNAL_URL'
         printf '%s\n' "$seed_render" | grep -q 'name: HOMEASSISTANT_INTERNAL_URL'
+        printf '%s\n' "$seed_render" | grep -q 'name: R2_ACCESS_KEY_ID'
         printf '%s\n' "$seed_render" | grep -q 'backup/config/update'
         printf '%s\n' "$seed_render" | grep -q 'name: homeassistant-backup-encryption'
+        if printf '%s\n' "$seed_render" | grep -q -E '\.storage-http|\.storage-core\.config_entries'; then
+          echo 'private Home Assistant storage seeds must not be rendered' >&2
+          exit 1
+        fi
         if printf '%s\n' "$seed_render" | grep -q 'mountPath: /config/configuration.yaml'; then
           echo 'configuration.yaml must live on the PVC, not a permanent subPath mount' >&2
           exit 1
@@ -112,6 +121,13 @@ tasks:
           echo 'UI-managed Home Assistant core settings must not be rendered in configuration.yaml' >&2
           exit 1
         fi
+        onboarding_script="$(printf '%s\n' "$seed_render" | awk '
+          /^            - python3$/ { python = 1 }
+          python && /^            - \|$/ { script = 1; next }
+          script && /^          env:/ { exit }
+          script { sub(/^              /, ""); print }
+        ')"
+        printf '%s\n' "$onboarding_script" | python3 -c 'import ast, sys; ast.parse(sys.stdin.read())'
       - |
         restore_render="$(helm template "{{.RELEASE_NAME}}" . \
           --namespace "{{.NAMESPACE}}" \
@@ -128,7 +144,7 @@ tasks:
           echo 'restore mode must not render the onboarding hook' >&2
           exit 1
         fi
-        if printf '%s\n' "$restore_render" | grep -q 'Initializing Home Assistant config entries'; then
+        if printf '%s\n' "$restore_render" | grep -q '/api/config/config_entries/flow'; then
           echo 'restore mode must not render integration seeding' >&2
           exit 1
         fi

@@ -33,7 +33,7 @@ homeassistant_bootstrap_mode = "restore"
 ```
 
 This keeps the native **Upload backup** action available on the welcome screen
-by skipping owner, MQTT, R2, HTTP storage, automation, script, and scene
+by skipping owner, MQTT, R2, HTTP configuration, automation, script, and scene
 seeding. The only created file is a minimal `configuration.yaml` that the
 restored `/config` replaces. After the restore succeeds, changing the mode back
 to `seed` is safe: the chart adopts and preserves restored files. Keep the
@@ -106,10 +106,11 @@ Terraform uses the same account token to derive the R2 S3 credential pair:
 - Secret Access Key: the SHA-256 hash of the account API token value.
 
 It stores only that pair in the `homeassistant-r2-credentials` Kubernetes
-Secret. On a fresh Home Assistant volume, the Helm chart seeds Home Assistant's
-official **Cloudflare R2** integration with the bucket, endpoint, credentials,
-and `home-assistant` prefix. The raw `cfat_...` bearer token is never placed in
-the Home Assistant pod.
+Secret. With owner seeding enabled, the Helm hook creates Home Assistant's
+official **Cloudflare R2** integration through its config flow with the bucket,
+endpoint, credentials, and `home-assistant` prefix. The flow validates access
+to the bucket before saving the entry. The raw `cfat_...` bearer token is never
+placed in the Home Assistant pod.
 
 This is the convenient one-token profile: a compromise of Home Assistant would
 expose access to R2 objects allowed by the account token, but would not expose
@@ -139,9 +140,10 @@ default time and add jitter. These values initialize a fresh, unconfigured
 schedule; subsequent changes under **Settings > System > Backups** are
 preserved instead of being reconciled by Terraform or Helm.
 
-The authenticated schedule setup requires `homeassistant_onboarding`. With
-manual onboarding, the R2 location is still seeded, but configure its schedule
-once in the UI. Existing volumes and native restores are never modified.
+The authenticated integration and schedule setup requires
+`homeassistant_onboarding`. With manual onboarding, add the R2 location and
+configure its schedule once in the UI. Existing volumes and native restores
+are never modified.
 
 For a schedule initialized by this hook, preserve the generated recovery
 password outside the cluster. The repository backup task includes its Secret
@@ -164,9 +166,10 @@ does not replace their password. In that case, the existing Home Assistant
 emergency-kit key remains authoritative and may differ from the Terraform
 Secret. Store that existing key separately before relying on those backups.
 
-The chart never overwrites an existing `core.config_entries` file. For an
-existing Home Assistant volume, add **Cloudflare R2** once under **Settings >
-Devices & services** and copy the values from the Kubernetes Secret instead.
+The chart detects a matching **Cloudflare R2** config entry and preserves it.
+It creates only a missing entry, through Home Assistant's own validated config
+flow. If owner seeding is disabled, add **Cloudflare R2** once under **Settings
+> Devices & services** and copy the values from the Kubernetes Secret instead.
 
 ## 4. Create the encryption identity
 

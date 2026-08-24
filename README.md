@@ -69,11 +69,13 @@ homeassistant_onboarding = {
 ```
 
 The Helm hook uses Home Assistant's built-in but undocumented onboarding HTTP
-flow to create the owner and finish first-boot onboarding, then revokes its
-temporary login token. See `HOME_ASSISTANT_COMPATIBILITY.md` before upgrading.
-It preserves completed onboarding on later deployments. Change passwords
-through Home Assistant after the first boot; changing this Terraform value does
-not rotate an existing account.
+flow to create the owner and finish first-boot onboarding. With that temporary
+admin session it also reconciles core and HTTP settings and creates missing
+MQTT and R2 entries through their config flows, then revokes the token. See
+`HOME_ASSISTANT_COMPATIBILITY.md` before upgrading. It preserves completed
+onboarding and existing integration entries on later deployments. Change
+passwords through Home Assistant after the first boot; changing this Terraform
+value does not rotate an existing account or integration credential.
 
 When restoring a native Home Assistant backup onto a blank volume, use
 `homeassistant_bootstrap_mode = "restore"` and omit the owner block until the
@@ -153,9 +155,10 @@ task backup:list
 
 Follow [BACKUP.md](BACKUP.md) first to configure the bucket, account token ID,
 and an independently stored age identity. Terraform derives one R2 credential
-pair from the same account token and configures Home Assistant's official R2
-backup location on a fresh installation. With owner seeding enabled, it also
-defaults to daily encrypted R2 backups with seven-copy retention. Preserve the
+pair from the same account token. With owner seeding enabled, the authenticated
+hook creates Home Assistant's official R2 backup location through its config
+flow and defaults to daily encrypted R2 backups with seven-copy retention.
+With manual onboarding, add the R2 integration in the UI. Preserve the
 generated `homeassistant-backup-encryption` password outside the cluster; the
 repository backup includes it inside the separate age-encrypted archive. The
 repository backup workflow never uploads plaintext secrets and restores into

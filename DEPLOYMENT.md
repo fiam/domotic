@@ -290,12 +290,15 @@ configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Custom
 `values.yaml`, including the serial adapter and site details.
 
 For a new Home Assistant installation, keep
-`homeassistant_bootstrap_mode="seed"` and optionally configure
-`homeassistant_onboarding` as shown in the variables example. Terraform creates
-a Secret, and a one-shot Helm hook creates the first owner through Home
-Assistant's supported onboarding APIs and completes the remaining onboarding
-steps. Its temporary login token is revoked. It never replaces an existing user
-or password.
+`homeassistant_bootstrap_mode="seed"`. Configure
+`homeassistant_onboarding` as shown in the variables example to enable
+automated API bootstrap. Terraform creates a Secret, and a one-shot Helm hook
+creates the first owner through Home Assistant's built-in but undocumented
+onboarding flow, completes the remaining steps, reconciles core and HTTP
+settings, and creates missing MQTT and R2 entries through their config flows.
+Its temporary login token is revoked. It never replaces an existing user,
+password, or integration entry. If you omit owner seeding, configure those
+settings and integrations in the UI.
 
 For a native Home Assistant backup recovery onto a blank volume, set
 `homeassistant_bootstrap_mode="restore"` before applying and deploying. Do not
@@ -361,12 +364,13 @@ development-only coordinator emulator.
 ## 7. Configure encrypted off-host backups
 
 When R2 is enabled before the first Helm deployment, Terraform creates the
-bucket and derived S3 credential Secret, and the chart seeds Home Assistant's
-official Cloudflare R2 backup location. When owner seeding is enabled too, the
-onboarding hook configures daily encrypted backups to that bucket and retains
-seven copies by default. Set `homeassistant_automatic_backups` in the Terraform
-variables to change the initial retention/time or disable scheduling. Existing
-backup settings and native restores are preserved.
+bucket and derived S3 credential Secret. With owner seeding enabled, the chart
+creates Home Assistant's official Cloudflare R2 backup location through its
+validated config flow, then configures daily encrypted backups to that bucket
+and retains seven copies by default. Set `homeassistant_automatic_backups` in
+the Terraform variables to change the initial retention/time or disable
+scheduling. Existing integration entries, backup settings, and native restores
+are preserved. With manual onboarding, add Cloudflare R2 in the UI instead.
 
 For a newly initialized schedule, copy the generated
 `homeassistant-backup-encryption` password into a password manager before

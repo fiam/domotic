@@ -19,10 +19,12 @@ configSeed:
   resources: {}
 
 # Create the first owner account through Home Assistant's built-in but
-# undocumented onboarding HTTP flow. Read HOME_ASSISTANT_COMPATIBILITY.md before
-# changing the HA image. Terraform creates the referenced Secret when
-# homeassistant_onboarding is configured. The hook preserves completed
-# onboarding and never replaces an existing owner or password.
+# undocumented onboarding HTTP flow. The authenticated hook also creates
+# missing MQTT and R2 entries through their config flows and reconciles HTTP
+# proxy settings. Read HOME_ASSISTANT_COMPATIBILITY.md before changing the HA
+# image. Terraform creates the referenced Secret when homeassistant_onboarding
+# is configured. The hook preserves completed onboarding and never replaces an
+# existing owner or password.
 onboarding:
   enabled: false
   activeDeadlineSeconds: 600
@@ -34,9 +36,10 @@ onboarding:
     languageKey: language
   resources: {}
 
-# Seed Home Assistant's official Cloudflare R2 backup integration on the first
-# boot of a new configuration volume. Terraform supplies this block and creates
-# the referenced Secret when r2_backup_bucket_name is configured.
+# Create Home Assistant's official Cloudflare R2 backup integration through its
+# config flow when owner seeding is enabled and no matching entry exists.
+# Terraform supplies this block and creates the referenced Secret when
+# r2_backup_bucket_name is configured.
 r2Backup:
   enabled: false
   bucket: ""
