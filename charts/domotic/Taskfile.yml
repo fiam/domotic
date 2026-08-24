@@ -85,9 +85,18 @@ tasks:
           --namespace "{{.NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.onboarding.enabled=true \
-          --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding)"
+          --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
+          --set homeassistant.r2Backup.enabled=true \
+          --set homeassistant.r2Backup.bucket=domotic-test-backups \
+          --set homeassistant.r2Backup.endpointUrl=https://example.invalid \
+          --set homeassistant.r2Backup.existingSecret.name=homeassistant-r2-credentials \
+          --set homeassistant.r2Backup.automatic.enabled=true \
+          --set homeassistant.r2Backup.automatic.agentName=domotic-test-backups \
+          --set homeassistant.r2Backup.automatic.existingSecret.name=homeassistant-backup-encryption)"
         printf '%s\n' "$seed_render" | grep -q 'name: domotic-homeassistant-onboarding'
         printf '%s\n' "$seed_render" | grep -q 'Home Assistant onboarding is complete'
+        printf '%s\n' "$seed_render" | grep -q 'backup/config/update'
+        printf '%s\n' "$seed_render" | grep -q 'name: homeassistant-backup-encryption'
         if printf '%s\n' "$seed_render" | grep -q 'mountPath: /config/configuration.yaml'; then
           echo 'configuration.yaml must live on the PVC, not a permanent subPath mount' >&2
           exit 1
@@ -98,7 +107,11 @@ tasks:
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.configSeed.mode=restore \
           --set homeassistant.onboarding.enabled=true \
-          --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding)"
+          --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
+          --set homeassistant.r2Backup.enabled=true \
+          --set homeassistant.r2Backup.automatic.enabled=true \
+          --set homeassistant.r2Backup.automatic.agentName=domotic-test-backups \
+          --set homeassistant.r2Backup.automatic.existingSecret.name=homeassistant-backup-encryption)"
         printf '%s\n' "$restore_render" | grep -q 'Creating minimal configuration for native restore'
         if printf '%s\n' "$restore_render" | grep -q 'name: domotic-homeassistant-onboarding'; then
           echo 'restore mode must not render the onboarding hook' >&2

@@ -46,6 +46,19 @@ r2Backup:
     name: ""
     accessKeyIdKey: access_key_id
     secretAccessKeyKey: secret_access_key
+  # With Terraform, this defaults to daily encrypted backups retained for
+  # seven copies when R2 and owner seeding are both enabled. The onboarding
+  # hook initializes only an unconfigured backup schedule; later UI changes
+  # remain owned by Home Assistant.
+  automatic:
+    enabled: false
+    agentName: ""
+    retentionCopies: 7
+    # Empty uses Home Assistant's early-morning default plus randomized jitter.
+    time: ""
+    existingSecret:
+      name: ""
+      passwordKey: password
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:
