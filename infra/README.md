@@ -81,6 +81,15 @@ and R2 entries through their config flows. It revokes the token afterward.
 Existing users and integration entries are never overwritten, so this is not a
 password- or credential-rotation mechanism.
 
+`homeassistant_remote_custom_components` optionally passes public immutable
+custom-integration archives to the Home Assistant chart. Kubernetes verifies
+each declared SHA-256 and mounts the extracted integration from an isolated
+ephemeral volume. These URLs and checksums are non-secret Terraform output:
+never embed credentials or expiring signed query strings. Repository-local
+components can come from a pinned Git submodule and use the chart's
+`customComponents.local` list instead. See
+[the custom integration bridge guide](../custom integration.md) for both forms.
+
 When an R2 bucket is configured in seed mode, that same temporary admin session
 initializes daily encrypted backups to the R2 agent with seven-copy retention.
 Terraform generates the distinct recovery password in

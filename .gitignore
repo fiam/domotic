@@ -35,3 +35,9 @@ infra/helm-values-*.yaml
 # Temporary files
 *.tmp
 *.log
+
+# custom integration reverse-engineering inputs and live captures (never commit)
+/.custom integration-re.*/
+*.apk
+*.xapk
+/tests/custom integration/captures/

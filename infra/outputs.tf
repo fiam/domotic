@@ -108,6 +108,16 @@ output "helm_values_yaml" {
           port   = 1883
         }
       }
+      customComponents = {
+        remote = [
+          for component in var.homeassistant_remote_custom_components : {
+            name        = component.name
+            url         = component.url
+            sha256      = lower(component.sha256)
+            archivePath = component.archive_path
+          }
+        ]
+      }
       httpRoute = {
         hostnames = [var.local_http_hostnames.homeassistant]
       }

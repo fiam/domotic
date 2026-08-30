@@ -18,6 +18,27 @@ configSeed:
     pullPolicy: IfNotPresent
   resources: {}
 
+# Deliver managed Home Assistant custom integrations without writing them into
+# the configuration PVC. Local sources must be packaged below this chart's
+# files directory; a Git submodule can provide a separately versioned source.
+# Remote sources must be immutable tar.gz archives with a pinned SHA-256;
+# archivePath points at the directory containing that integration's
+# manifest.json. Each component is mounted independently so unmanaged
+# custom_components on the PVC are not hidden.
+customComponents:
+  local: []
+  remote: []
+  # - name: example
+  #   url: https://github.com/example/integration/archive/0123456789abcdef.tar.gz
+  #   sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  #   archivePath: integration-0123456789abcdef/custom_components/example
+  installer:
+    image:
+      repository: alpine
+      tag: "3.22.1"
+      pullPolicy: IfNotPresent
+    resources: {}
+
 # Create or authenticate the admin account through Home Assistant's built-in
 # but undocumented onboarding/login flows. Terraform seed mode always enables
 # this hook and supplies the Secret; restore mode disables it. The authenticated

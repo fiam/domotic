@@ -21,3 +21,13 @@
 .idea/
 *.tmproj
 .vscode/
+
+# Submodule repositories contribute only their Home Assistant component source.
+charts/homeassistant/files/repositories/*/.git
+charts/homeassistant/files/repositories/*/.github/
+charts/homeassistant/files/repositories/*/.gitignore
+charts/homeassistant/files/repositories/*/README.md
+charts/homeassistant/files/repositories/*/Taskfile.yml
+charts/homeassistant/files/repositories/*/hacs.json
+charts/homeassistant/files/repositories/*/tests/
+charts/homeassistant/files/repositories/*/custom integration_emulator/

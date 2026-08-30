@@ -1,6 +1,13 @@
 {{- if not (has .Values.configSeed.mode (list "seed" "restore")) }}
 {{- fail "configSeed.mode must be seed or restore" }}
 {{- end }}
+{{- $componentNames := dict }}
+{{- range $component := concat .Values.customComponents.local .Values.customComponents.remote }}
+{{- if or (gt (len $component.name) 50) (hasKey $componentNames $component.name) }}
+{{- fail (printf "custom component name %q must be unique and at most 50 characters" $component.name) }}
+{{- end }}
+{{- $_ := set $componentNames $component.name true }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -20,6 +27,9 @@ spec:
     metadata:
       annotations:
         configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if or .Values.customComponents.local .Values.customComponents.remote }}
+        custom-components.revision: {{ printf "%s\n%s" (include (print $.Template.BasePath "/custom-components-configmaps.yaml") .) (toJson .Values.customComponents.remote) | sha256sum }}
+        {{- end }}
         {{- with .Values.podAnnotations }}{{- toYaml . | nindent 8 }}{{- end }}
       labels:
         {{- include "homeassistant.labels" . | nindent 8 }}
@@ -38,8 +48,9 @@ spec:
       {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      {{- if .Values.configSeed.enabled }}
+      {{- if or .Values.configSeed.enabled .Values.customComponents.remote }}
       initContainers:
+        {{- if .Values.configSeed.enabled }}
         - name: config-seed
           image: "{{ .Values.configSeed.image.repository }}:{{ .Values.configSeed.image.tag }}"
           imagePullPolicy: {{ .Values.configSeed.image.pullPolicy }}
@@ -100,6 +111,57 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- end }}
+        {{- range $component := .Values.customComponents.remote }}
+        {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $component.name) }}
+        {{- fail (printf "customComponents.remote name %q must be a DNS label" $component.name) }}
+        {{- end }}
+        {{- if not (hasPrefix "https://" $component.url) }}
+        {{- fail (printf "customComponents.remote[%s].url must use HTTPS" $component.name) }}
+        {{- end }}
+        {{- if not (regexMatch "^[a-fA-F0-9]{64}$" $component.sha256) }}
+        {{- fail (printf "customComponents.remote[%s].sha256 must contain 64 hexadecimal characters" $component.name) }}
+        {{- end }}
+        {{- if or (hasPrefix "/" $component.archivePath) (contains ".." $component.archivePath) }}
+        {{- fail (printf "customComponents.remote[%s].archivePath must be a safe relative path" $component.name) }}
+        {{- end }}
+        - name: custom-{{ $component.name }}
+          image: "{{ $.Values.customComponents.installer.image.repository }}:{{ $.Values.customComponents.installer.image.tag }}"
+          imagePullPolicy: {{ $.Values.customComponents.installer.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+              mkdir -p /work/unpacked /component
+              wget -q -O /work/component.tar.gz "$COMPONENT_URL"
+              echo "$COMPONENT_SHA256  /work/component.tar.gz" | sha256sum -c -
+              if tar -tzf /work/component.tar.gz | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+                echo "Custom component archive contains an unsafe path" >&2
+                exit 1
+              fi
+              tar -xzf /work/component.tar.gz -C /work/unpacked
+              source="/work/unpacked/$COMPONENT_ARCHIVE_PATH"
+              test -f "$source/manifest.json"
+              cp -R "$source"/. /component/
+          env:
+            - name: COMPONENT_URL
+              value: {{ $component.url | quote }}
+            - name: COMPONENT_SHA256
+              value: {{ lower $component.sha256 | quote }}
+            - name: COMPONENT_ARCHIVE_PATH
+              value: {{ $component.archivePath | quote }}
+          volumeMounts:
+            - name: custom-{{ $component.name }}
+              mountPath: /component
+            - name: custom-{{ $component.name }}-work
+              mountPath: /work
+          {{- with $.Values.customComponents.installer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}
@@ -131,6 +193,16 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            {{- range $component := .Values.customComponents.local }}
+            - name: custom-{{ $component.name }}
+              mountPath: /config/custom_components/{{ $component.name }}
+              readOnly: true
+            {{- end }}
+            {{- range $component := .Values.customComponents.remote }}
+            - name: custom-{{ $component.name }}
+              mountPath: /config/custom_components/{{ $component.name }}
+              readOnly: true
+            {{- end }}
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -141,6 +213,24 @@ spec:
         - name: configuration-files
           configMap:
             name: {{ include "homeassistant.fullname" . }}-configuration
+        {{- range $component := .Values.customComponents.local }}
+        {{- $source := $component.source | trimSuffix "/" }}
+        - name: custom-{{ $component.name }}
+          configMap:
+            name: {{ include "homeassistant.customComponentName" (dict "root" $ "name" $component.name) }}
+            items:
+              {{- range $file, $_ := $.Files.Glob (printf "%s/**" $source) }}
+              {{- $relative := $file | trimPrefix (printf "%s/" $source) }}
+              - key: {{ $relative | sha256sum | trunc 32 }}
+                path: {{ $relative }}
+              {{- end }}
+        {{- end }}
+        {{- range $component := .Values.customComponents.remote }}
+        - name: custom-{{ $component.name }}
+          emptyDir: {}
+        - name: custom-{{ $component.name }}-work
+          emptyDir: {}
+        {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

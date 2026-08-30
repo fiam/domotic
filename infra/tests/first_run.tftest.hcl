@@ -197,3 +197,33 @@ run "native_restore_disables_owner_seed" {
     error_message = "Restore mode must disable Home Assistant owner, integration, and storage seeding."
   }
 }
+
+run "remote_custom_components_reach_helm_values" {
+  command = plan
+
+  variables {
+    cloudflare_api_token  = "mock-api-token"
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "domotic-test"
+    generate_zigbee_keys  = true
+    homeassistant_onboarding = {
+      password = "a-long-test-password"
+    }
+    homeassistant_remote_custom_components = [{
+      name         = "fixture"
+      url          = "https://example.invalid/fixture.tar.gz"
+      sha256       = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
+      archive_path = "fixture/custom_components/fixture"
+    }]
+  }
+
+  assert {
+    condition = (
+      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].name == "fixture" &&
+      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].sha256 == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" &&
+      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].archivePath == "fixture/custom_components/fixture"
+    )
+    error_message = "Terraform must pass validated remote custom-component metadata to Helm."
+  }
+}

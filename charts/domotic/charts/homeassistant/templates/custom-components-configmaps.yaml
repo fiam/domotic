@@ -1,0 +1,23 @@
+{{- range $component := .Values.customComponents.local }}
+{{- if or (gt (len $component.name) 50) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $component.name)) }}
+{{- fail (printf "customComponents.local name %q must be a DNS label" $component.name) }}
+{{- end }}
+{{- if or (not (hasPrefix "files/" $component.source)) (contains ".." $component.source) }}
+{{- fail (printf "customComponents.local[%s].source must stay below the chart files directory" $component.name) }}
+{{- end }}
+{{- $files := $.Files.Glob (printf "%s/**" ($component.source | trimSuffix "/")) }}
+{{- if eq (len $files) 0 }}
+{{- fail (printf "customComponents.local[%s].source contains no files" $component.name) }}
+{{- end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "homeassistant.customComponentName" (dict "root" $ "name" $component.name) }}
+  labels:
+    {{- include "homeassistant.labels" $ | nindent 4 }}
+binaryData:
+  {{- range $file, $_ := $files }}
+  {{ $file | trimPrefix (printf "%s/" ($component.source | trimSuffix "/")) | sha256sum | trunc 32 }}: {{ $.Files.Get $file | b64enc }}
+  {{- end }}
+{{- end }}

@@ -3,6 +3,10 @@
 # It uses the zstackmulator emulator for Zigbee development without physical hardware
 
 homeassistant:
+  customComponents:
+    local:
+      - name: custom integration
+        source: files/repositories/custom-integration/custom_components/custom integration
   httpRoute:
     parentRefs:
     - name: gateway

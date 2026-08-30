@@ -61,6 +61,18 @@ homeassistant_onboarding = {
   password = "replace-with-a-long-unique-password"
 }
 
+# Optional custom integrations from a separate repository or release. Use a
+# public immutable tar.gz artifact and verify its digest independently. The URL
+# and checksum are written to non-secret Helm values, so never put a token or
+# signed credential in the URL. archive_path is the directory inside the
+# archive that directly contains manifest.json.
+# homeassistant_remote_custom_components = [{
+#   name         = "example"
+#   url          = "https://github.com/example/integration/archive/0123456789abcdef.tar.gz"
+#   sha256       = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+#   archive_path = "integration-0123456789abcdef/custom_components/example"
+# }]
+
 # ==============================================================================
 # Encrypted R2 Backups (Optional)
 # ==============================================================================

@@ -7,7 +7,7 @@ treated as a compatibility migration and tested on a new disposable volume.
 
 ## Verified baseline
 
-Last verified: **2026-08-24**
+Last verified: **2026-08-31**
 
 | Contract | Verified value |
 | --- | --- |
@@ -25,6 +25,7 @@ Last verified: **2026-08-24**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
+| custom integration custom integration | version `0.7.0`; 29 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
@@ -49,6 +50,8 @@ change in any Home Assistant release, including a patch release.
 | `templates/onboarding-job.yaml` | The Home Assistant image contains compatible `python3` and `aiohttp` runtimes | The Helm hook cannot run. |
 | `templates/deployment.yaml` | The `.seed` adoption rules distinguish unchanged chart-managed YAML from user-modified files | A chart update could overwrite YAML edits or fail to restore a missing managed file. |
 | Restore mode | Starting with only `default_config:` exposes Home Assistant's native onboarding backup upload flow and a restored `/config` takes over | A new release may require different bootstrap configuration or restore steps. |
+| `custom-integration` submodule | Config-flow, SSDP service info, typed config-entry runtime data, coordinator, entity, diagnostics, and aiohttp APIs retain their imported interfaces | The custom integration can fail to load, discover, configure, update entities, or unload. |
+| `custom-integration` submodule | third-party's private `/HsAPI`, cookie/challenge authentication, device-scenario records, MQTT-over-WebSocket endpoint, and protobuf schemas retain their observed contracts | Authentication, inventory, button assignments, commands, or push state can fail independently of Home Assistant compatibility. |
 
 The chart does not write private `.storage` files. In seed mode, the
 authenticated hook creates MQTT only when no MQTT entry exists, creates R2 only
@@ -85,6 +88,11 @@ code, constants, schemas, migrations, and tests—not just release notes.
 - [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/agent.py)
 - [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/backup.py)
 - [Native backup documentation](https://www.home-assistant.io/integrations/backup/)
+- [SSDP integration cache API](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/ssdp/__init__.py)
+- [SSDP service-info model](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/helpers/service_info/ssdp.py)
+- [Config entries and runtime data](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/config_entries.py)
+- [Data update coordinator](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/helpers/update_coordinator.py)
+- [aiohttp session helpers](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/helpers/aiohttp_client.py)
 
 Also inspect the integration tests beside those source files. They often show
 required payloads and migration behavior more precisely than user-facing docs.
@@ -181,3 +189,66 @@ hiding them or treating them as proof that setup failed.
 Native-backup upload through R2 is verified. Download/decryption and a complete
 native restore were not exercised in this baseline run and remain required
 before approving a Home Assistant version change for production.
+
+The custom integration component was imported and its sanitized authentication, inventory,
+command, MQTT-over-WebSocket, binary/base64 protobuf, diagnostics, entity
+filtering, and write-reconciliation contracts were exercised inside the exact
+`2026.8.3` image. Helm renders were exercised for both repository-local
+ConfigMap delivery and remote checksum-pinned init-container delivery. A real
+Home Server was identified over SSDP and its unauthenticated description and
+shipped browser client were audited without recording installation identifiers
+or session material. Live administrator authentication, manual access through
+the router-provided `custom integration.lan` name, inventory/entity enumeration, one simple
+relay command, and the authenticated `DeviceStateEvent` field map/fingerprint
+were verified on 2026-08-26. The live inventory established that rows without
+`capLevel` or `capOnOff` and with `headerFilter=Switches` are emitter/input rows,
+not descriptive duplicates. It contains 72 physical modules represented by 74
+actuator-channel rows and 72 emitter rows. The official client groups physical
+siblings by hardware address, while their A–D and IR actions are programmable
+`DefaultBinds` scenarios. Home Assistant exposes the named emitter separately
+and links it to the actuator device through `via_device`; multiple actuator
+channels on one physical module remain grouped.
+The live server also reports `switchedOn=false` for every lighting regulator,
+including outputs with a positive `levelPercentage`; regulator on/off and
+brightness state must therefore be derived from the level. Bidirectional relay,
+dimmer, and blind behavior is accepted. The shipped client and authenticated
+schemas established that four-key assignments are device-scoped scenarios,
+`TeclaA` through `TeclaD` are endpoints 9 through 12, `Pressed` is state 0, and
+`Released` is state 1 and only follows a long press. The sixteen IR keys are
+endpoints 13 through 28. All 24 assignments from six live standalone
+`QuadPressureButton` devices and the four Escadaria emitter assignments were
+first inspected individually. The v0.6.1 Kind-cluster acceptance then resolved
+all 288 A–D assignments from all 72 emitters, registered 72 disabled-by-default
+IR receiver entities, and exposed all named emitters as linked Home Assistant
+devices. The live registry contains 66 actuator devices and 72 emitter devices;
+66 emitters carry a `via_device` actuator link and six standalone
+`QuadPressureButton` emitters do not. The identification-LED REST command is
+covered by the sanitized contract. Version 0.6.5 sends direct light/blind and
+switch identification to exactly the selected logical row ID. Its complementary
+receiver action reverses loaded hub scenarios for exactly the selected actuator
+ID and sends one request to each associated emitter ID; it does not broaden
+either side to physical siblings. The request duration is a native config-entry
+option, defaults to 30 seconds, and is constrained to the Home Server's observed
+1–30-second range. A physical live-button MQTT event is still pending
+acceptance. A future protobuf mismatch deliberately uses MQTT only to trigger
+authoritative REST refreshes.
+
+Version 0.7.0 additionally verifies the authenticated
+`DeviceInstantReadingEvent` contract and converts its `consumed_mW` field to a
+native Home Assistant power measurement in watts. The live inventory advertises
+74 metering-capable logical rows, and Home Assistant creates 74 available power
+entities. Reporting uses concurrency-limited 10-second round-robin batches,
+with rows sharing a hardware address placed in separate batches. Live
+acceptance completed emitter mapping with no failures, kept the authoritative
+coordinator healthy, decoded numeric readings for 66 rows during the observed
+window, and left eight rows available but unknown pending a successful sample.
+Two transient lease precondition failures were retained as aggregate diagnostics
+and are retried automatically; they did not affect entity availability.
+
+The off-by-default unknown-message observer was enabled through the native
+options flow for a bounded live window, then disabled. It recorded only three
+redacted families: `events/device/pen/state` with fields `1:2,2:0,3:0`, an
+otherwise-redacted device-event shape with fields `1:2,2:0,3:0,4:2`, and one
+non-protobuf top-level event shape. Known state and metering payloads had no
+additive fields or decode failures. Option updates reconnect only the custom integration
+MQTT listener and do not repeat inventory or emitter mapping.

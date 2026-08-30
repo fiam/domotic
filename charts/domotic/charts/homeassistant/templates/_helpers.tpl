@@ -6,6 +6,18 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
+Name a repository-local or remotely fetched custom component volume.
+*/}}
+{{- define "homeassistant.customComponentName" -}}
+{{- $full := printf "%s-custom-%s" (include "homeassistant.fullname" .root) .name }}
+{{- if le (len $full) 63 }}
+{{- $full }}
+{{- else }}
+{{- printf "%s-cc-%s" (include "homeassistant.fullname" .root | trunc 45 | trimSuffix "-") (.name | sha256sum | trunc 12) }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.

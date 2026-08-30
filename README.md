@@ -15,6 +15,7 @@ This project separates infrastructure management (Terraform) from application de
 
 **Helm (charts/domotic/)** - Standard Helm workflows
 - Deploys Home Assistant, Zigbee2MQTT, Mosquitto, Cloudflared
+- Delivers repository-local or checksum-pinned remote Home Assistant custom integrations
 - References Terraform-created secrets
 - Update frequently (version upgrades, config changes)
 
@@ -46,7 +47,7 @@ development environment, a supported Zigbee adapter.
 ### 2. Clone and create private configuration
 
 ```sh
-git clone https://github.com/fiam/domotic.git
+git clone --recurse-submodules https://github.com/fiam/domotic.git
 cd domotic
 
 cp infra/terraform.tfvars.example infra/terraform.tfvars
@@ -87,6 +88,13 @@ Home Assistant settings, storage, and route parent references described in
 [the k3s guide](DEPLOYMENT.md#6-attach-the-application-routes-to-traefik).
 Both files are ignored by Git, so pulling upstream changes does not overwrite
 local configuration. Do not put secrets in a tracked example file.
+
+For an existing clone, initialize the pinned custom-integration repository
+before rendering or deploying the Kind values:
+
+```sh
+git submodule update --init --recursive
+```
 
 List the available workflows at any time:
 
@@ -131,6 +139,13 @@ task keys:import SOURCE=restore/<backup-directory>
 
 `task deploy` is the convenient single command for routine infrastructure and
 application updates.
+
+The chart consumes the experimental third-party custom integration LAN bridge from a pinned
+`custom-integration` submodule. It preserves the vendor Home Server,
+discovers it through SSDP, and asks for existing credentials through Home
+Assistant's integration UI. See [custom integration.md](custom integration.md) for local and immutable
+remote installation workflows; the integration repository owns its protocol,
+tests, emulator, and supported-entity documentation.
 
 Component tasks also work locally. For example, `cd infra && task plan` is the
 same workflow as `task infra:plan` from the repository root.
