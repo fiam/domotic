@@ -140,7 +140,7 @@ variable "homeassistant_onboarding" {
 }
 
 variable "homeassistant_remote_custom_components" {
-  description = "Public, immutable Home Assistant custom-integration tarballs installed by Kubernetes init containers. URLs and checksums are written to non-secret Helm values; never place credentials in a URL."
+  description = "Public, immutable Home Assistant custom-integration repository or release archives installed by Kubernetes init containers. URLs and checksums are written to non-secret Helm values; never place credentials in a URL."
   type = list(object({
     name         = string
     url          = string
@@ -155,7 +155,7 @@ variable "homeassistant_remote_custom_components" {
       alltrue([
         for component in var.homeassistant_remote_custom_components :
         length(component.name) <= 50 &&
-        can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", component.name)) &&
+        can(regex("^[a-z][a-z0-9_]*$", component.name)) &&
         startswith(component.url, "https://") &&
         can(regex("^[0-9A-Fa-f]{64}$", component.sha256)) &&
         length(component.archive_path) > 0 &&
@@ -163,7 +163,7 @@ variable "homeassistant_remote_custom_components" {
         !strcontains(component.archive_path, "..")
       ])
     )
-    error_message = "Remote custom components need unique DNS-label names, HTTPS URLs, 64-character SHA-256 values, and safe relative archive paths."
+    error_message = "Remote custom integrations need unique lowercase Home Assistant domains, HTTPS URLs, 64-character SHA-256 values, and safe relative archive paths."
   }
 }
 

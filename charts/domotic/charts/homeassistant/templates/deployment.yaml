@@ -3,8 +3,11 @@
 {{- end }}
 {{- $componentNames := dict }}
 {{- range $component := concat .Values.customComponents.local .Values.customComponents.remote }}
-{{- if or (gt (len $component.name) 50) (hasKey $componentNames $component.name) }}
-{{- fail (printf "custom component name %q must be unique and at most 50 characters" $component.name) }}
+{{- if or (gt (len $component.name) 50) (not (regexMatch "^[a-z][a-z0-9_]*$" $component.name)) }}
+{{- fail (printf "custom component name %q must be a lowercase Home Assistant integration domain of at most 50 characters" $component.name) }}
+{{- end }}
+{{- if hasKey $componentNames $component.name }}
+{{- fail (printf "custom component name %q must be unique" $component.name) }}
 {{- end }}
 {{- $_ := set $componentNames $component.name true }}
 {{- end }}
@@ -113,8 +116,9 @@ spec:
           {{- end }}
         {{- end }}
         {{- range $component := .Values.customComponents.remote }}
-        {{- if not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $component.name) }}
-        {{- fail (printf "customComponents.remote name %q must be a DNS label" $component.name) }}
+        {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
+        {{- if not (regexMatch "^[a-z][a-z0-9_]*$" $component.name) }}
+        {{- fail (printf "customComponents.remote name %q must be a lowercase Home Assistant integration domain" $component.name) }}
         {{- end }}
         {{- if not (hasPrefix "https://" $component.url) }}
         {{- fail (printf "customComponents.remote[%s].url must use HTTPS" $component.name) }}
@@ -122,10 +126,10 @@ spec:
         {{- if not (regexMatch "^[a-fA-F0-9]{64}$" $component.sha256) }}
         {{- fail (printf "customComponents.remote[%s].sha256 must contain 64 hexadecimal characters" $component.name) }}
         {{- end }}
-        {{- if or (hasPrefix "/" $component.archivePath) (contains ".." $component.archivePath) }}
+        {{- if or (eq $component.archivePath "") (hasPrefix "/" $component.archivePath) (contains ".." $component.archivePath) }}
         {{- fail (printf "customComponents.remote[%s].archivePath must be a safe relative path" $component.name) }}
         {{- end }}
-        - name: custom-{{ $component.name }}
+        - name: custom-{{ $componentKey }}
           image: "{{ $.Values.customComponents.installer.image.repository }}:{{ $.Values.customComponents.installer.image.tag }}"
           imagePullPolicy: {{ $.Values.customComponents.installer.image.pullPolicy }}
           command:
@@ -153,9 +157,9 @@ spec:
             - name: COMPONENT_ARCHIVE_PATH
               value: {{ $component.archivePath | quote }}
           volumeMounts:
-            - name: custom-{{ $component.name }}
+            - name: custom-{{ $componentKey }}
               mountPath: /component
-            - name: custom-{{ $component.name }}-work
+            - name: custom-{{ $componentKey }}-work
               mountPath: /work
           {{- with $.Values.customComponents.installer.resources }}
           resources:
@@ -194,12 +198,12 @@ spec:
             - name: config
               mountPath: /config
             {{- range $component := .Values.customComponents.local }}
-            - name: custom-{{ $component.name }}
+            - name: custom-{{ include "homeassistant.customComponentKey" $component.name }}
               mountPath: /config/custom_components/{{ $component.name }}
               readOnly: true
             {{- end }}
             {{- range $component := .Values.customComponents.remote }}
-            - name: custom-{{ $component.name }}
+            - name: custom-{{ include "homeassistant.customComponentKey" $component.name }}
               mountPath: /config/custom_components/{{ $component.name }}
               readOnly: true
             {{- end }}
@@ -215,7 +219,7 @@ spec:
             name: {{ include "homeassistant.fullname" . }}-configuration
         {{- range $component := .Values.customComponents.local }}
         {{- $source := $component.source | trimSuffix "/" }}
-        - name: custom-{{ $component.name }}
+        - name: custom-{{ include "homeassistant.customComponentKey" $component.name }}
           configMap:
             name: {{ include "homeassistant.customComponentName" (dict "root" $ "name" $component.name) }}
             items:
@@ -226,9 +230,10 @@ spec:
               {{- end }}
         {{- end }}
         {{- range $component := .Values.customComponents.remote }}
-        - name: custom-{{ $component.name }}
+        {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
+        - name: custom-{{ $componentKey }}
           emptyDir: {}
-        - name: custom-{{ $component.name }}-work
+        - name: custom-{{ $componentKey }}-work
           emptyDir: {}
         {{- end }}
         {{- with .Values.volumes }}

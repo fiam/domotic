@@ -4,6 +4,10 @@ Before changing Home Assistant versions, bootstrap behavior, configuration,
 authentication, proxy settings, integrations, or backups, read and follow
 [HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md).
 
+Before changing how custom integrations are fetched, verified, mounted, or
+configured, also read and follow
+[CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md).
+
 Before changing the Kind topology, Colima configuration, development routes,
 or destroying a local development cluster, read and follow
 [DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md). The Kind cluster holds

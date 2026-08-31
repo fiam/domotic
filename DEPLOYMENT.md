@@ -289,6 +289,12 @@ Fill in `infra/terraform.tfvars`. If enabling R2, give the account API token
 configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
 `values.yaml`, including the serial adapter and site details.
 
+The repository installs no custom Home Assistant integration by default. If
+this deployment needs one, declare its public immutable archive in
+`homeassistant_remote_custom_components` or use a repository-local source in
+private Helm values. Follow [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md)
+for checksum, archive-path, upgrade, and removal requirements.
+
 For a new Home Assistant installation, keep
 `homeassistant_bootstrap_mode="seed"` and set
 `homeassistant_onboarding.password` as shown in the variables example. The

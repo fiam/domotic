@@ -95,6 +95,13 @@ run "empty_namespace_first_apply" {
     )
     error_message = "Zigbee2MQTT must receive its local URL through frontend.url."
   }
+
+  assert {
+    condition = (
+      length(yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote) == 0
+    )
+    error_message = "Terraform must not select a custom Home Assistant integration by default."
+  }
 }
 
 run "seed_requires_an_admin_password" {
@@ -211,18 +218,18 @@ run "remote_custom_components_reach_helm_values" {
       password = "a-long-test-password"
     }
     homeassistant_remote_custom_components = [{
-      name         = "fixture"
+      name         = "example_integration"
       url          = "https://example.invalid/fixture.tar.gz"
       sha256       = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF"
-      archive_path = "fixture/custom_components/fixture"
+      archive_path = "fixture/custom_components/example_integration"
     }]
   }
 
   assert {
     condition = (
-      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].name == "fixture" &&
+      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].name == "example_integration" &&
       yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].sha256 == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" &&
-      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].archivePath == "fixture/custom_components/fixture"
+      yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].archivePath == "fixture/custom_components/example_integration"
     )
     error_message = "Terraform must pass validated remote custom-component metadata to Helm."
   }

@@ -18,20 +18,22 @@ configSeed:
     pullPolicy: IfNotPresent
   resources: {}
 
-# Deliver managed Home Assistant custom integrations without writing them into
-# the configuration PVC. Local sources must be packaged below this chart's
-# files directory; a Git submodule can provide a separately versioned source.
+# Deliver user-selected Home Assistant custom integrations without writing
+# them into the configuration PVC. No integration is enabled by default. Local
+# sources must be packaged below this chart's files directory; a user-managed
+# Git submodule can provide a separately versioned source.
 # Remote sources must be immutable tar.gz archives with a pinned SHA-256;
 # archivePath points at the directory containing that integration's
-# manifest.json. Each component is mounted independently so unmanaged
-# custom_components on the PVC are not hidden.
+# manifest.json. name is the Home Assistant integration domain and may contain
+# underscores. Each component is mounted independently so unmanaged
+# custom_components on the PVC are not hidden. See CUSTOM_INTEGRATIONS.md.
 customComponents:
   local: []
   remote: []
-  # - name: example
+  # - name: example_integration
   #   url: https://github.com/example/integration/archive/0123456789abcdef.tar.gz
   #   sha256: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-  #   archivePath: integration-0123456789abcdef/custom_components/example
+  #   archivePath: integration-0123456789abcdef/custom_components/example_integration
   installer:
     image:
       repository: alpine

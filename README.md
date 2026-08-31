@@ -47,7 +47,7 @@ development environment, a supported Zigbee adapter.
 ### 2. Clone and create private configuration
 
 ```sh
-git clone --recurse-submodules https://github.com/fiam/domotic.git
+git clone https://github.com/fiam/domotic.git
 cd domotic
 
 cp infra/terraform.tfvars.example infra/terraform.tfvars
@@ -89,12 +89,9 @@ Home Assistant settings, storage, and route parent references described in
 Both files are ignored by Git, so pulling upstream changes does not overwrite
 local configuration. Do not put secrets in a tracked example file.
 
-For an existing clone, initialize the pinned custom-integration repository
-before rendering or deploying the Kind values:
-
-```sh
-git submodule update --init --recursive
-```
+Custom integrations are optional and are never selected by the repository.
+To install one, declare its immutable archive in Terraform or private Helm
+values as described in [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md).
 
 List the available workflows at any time:
 
@@ -140,12 +137,12 @@ task keys:import SOURCE=restore/<backup-directory>
 `task deploy` is the convenient single command for routine infrastructure and
 application updates.
 
-The chart consumes the experimental third-party custom integration LAN bridge from a pinned
-`custom-integration` submodule. It preserves the vendor Home Server,
-discovers it through SSDP, and asks for existing credentials through Home
-Assistant's integration UI. See [custom integration.md](custom integration.md) for local and immutable
-remote installation workflows; the integration repository owns its protocol,
-tests, emulator, and supported-entity documentation.
+The chart ships no custom integration. Users can provide any public,
+immutable repository or release archive through
+`homeassistant_remote_custom_components`; the pod verifies its SHA-256 and
+mounts only the selected integration directory. Repository-local sources can
+instead be declared in private Helm values. See
+[CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md).
 
 Component tasks also work locally. For example, `cd infra && task plan` is the
 same workflow as `task infra:plan` from the repository root.

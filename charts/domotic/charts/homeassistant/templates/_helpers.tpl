@@ -9,12 +9,22 @@ Expand the name of the chart.
 Name a repository-local or remotely fetched custom component volume.
 */}}
 {{- define "homeassistant.customComponentName" -}}
-{{- $full := printf "%s-custom-%s" (include "homeassistant.fullname" .root) .name }}
+{{- $componentName := .name | replace "_" "-" }}
+{{- $full := printf "%s-custom-%s" (include "homeassistant.fullname" .root) $componentName }}
 {{- if le (len $full) 63 }}
 {{- $full }}
 {{- else }}
 {{- printf "%s-cc-%s" (include "homeassistant.fullname" .root | trunc 45 | trimSuffix "-") (.name | sha256sum | trunc 12) }}
 {{- end }}
+{{- end }}
+
+{{/*
+Convert a Home Assistant integration domain into a Kubernetes-safe suffix.
+Home Assistant domains use underscores, while Kubernetes names use hyphens.
+Hyphens are rejected in the source domain, so this mapping is unambiguous.
+*/}}
+{{- define "homeassistant.customComponentKey" -}}
+{{- . | replace "_" "-" }}
 {{- end }}
 
 {{/*

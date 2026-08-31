@@ -79,23 +79,21 @@ tasks:
             --values "$values_file")"
           printf '%s\n' "$rendered" |
             grep -Fq "image: \"homeassistant/home-assistant:${ha_version}\""
+          if printf '%s\n' "$rendered" | grep -q 'mountPath: /config/custom_components/'; then
+            echo "$values_file must not select a custom integration" >&2
+            exit 1
+          fi
         done
-        local_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
-          --values ../../examples/values-kind.yaml)"
-        printf '%s\n' "$local_render" | grep -q 'name: domotic-homeassistant-custom-custom integration'
-        printf '%s\n' "$local_render" | grep -q 'mountPath: /config/custom_components/custom integration'
-        printf '%s\n' "$local_render" | grep -q 'path: translations/pt.json'
       - |
         remote_render="$(helm template "{{.RELEASE_NAME}}" . \
           --namespace "{{.NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
-          --set 'homeassistant.customComponents.remote[0].name=fixture' \
+          --set 'homeassistant.customComponents.remote[0].name=example_integration' \
           --set 'homeassistant.customComponents.remote[0].url=https://example.invalid/fixture.tar.gz' \
           --set 'homeassistant.customComponents.remote[0].sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
-          --set 'homeassistant.customComponents.remote[0].archivePath=fixture/custom_components/fixture')"
-        printf '%s\n' "$remote_render" | grep -q 'name: custom-fixture'
-        printf '%s\n' "$remote_render" | grep -q 'mountPath: /config/custom_components/fixture'
+          --set 'homeassistant.customComponents.remote[0].archivePath=fixture/custom_components/example_integration')"
+        printf '%s\n' "$remote_render" | grep -q 'name: custom-example-integration'
+        printf '%s\n' "$remote_render" | grep -q 'mountPath: /config/custom_components/example_integration'
         printf '%s\n' "$remote_render" | grep -q 'sha256sum -c -'
         printf '%s\n' "$remote_render" | grep -q 'Custom component archive contains an unsafe path'
         if helm template "{{.RELEASE_NAME}}" . \

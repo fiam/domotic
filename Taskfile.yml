@@ -23,23 +23,6 @@ tasks:
       - task: infra:check
       - task: helm:check
 
-  custom integration:test:
-    desc: Run the pinned custom integration submodule's protocol and emulator contracts
-    preconditions:
-      - sh: command -v docker >/dev/null
-        msg: Install Docker before running the custom integration contract tests.
-    cmds:
-      - |
-        integration_root="{{.ROOT_DIR}}/charts/domotic/charts/homeassistant/files/repositories/custom-integration"
-        test -f "$integration_root/custom_components/custom integration/manifest.json"
-        ha_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/domotic/charts/homeassistant/Chart.yaml)"
-        docker run --rm \
-          -v "$integration_root:/work:ro" \
-          -w /work \
-          -e PYTHONPATH=/work \
-          "homeassistant/home-assistant:${ha_version}" \
-          python -m unittest discover -s tests/custom integration -v
-
   deploy:
     desc: Apply infrastructure and deploy the chart
     cmds:

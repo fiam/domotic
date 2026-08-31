@@ -1,6 +1,6 @@
 {{- range $component := .Values.customComponents.local }}
-{{- if or (gt (len $component.name) 50) (not (regexMatch "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$" $component.name)) }}
-{{- fail (printf "customComponents.local name %q must be a DNS label" $component.name) }}
+{{- if or (gt (len $component.name) 50) (not (regexMatch "^[a-z][a-z0-9_]*$" $component.name)) }}
+{{- fail (printf "customComponents.local name %q must be a lowercase Home Assistant integration domain of at most 50 characters" $component.name) }}
 {{- end }}
 {{- if or (not (hasPrefix "files/" $component.source)) (contains ".." $component.source) }}
 {{- fail (printf "customComponents.local[%s].source must stay below the chart files directory" $component.name) }}
@@ -8,6 +8,9 @@
 {{- $files := $.Files.Glob (printf "%s/**" ($component.source | trimSuffix "/")) }}
 {{- if eq (len $files) 0 }}
 {{- fail (printf "customComponents.local[%s].source contains no files" $component.name) }}
+{{- end }}
+{{- if eq ($.Files.Get (printf "%s/manifest.json" ($component.source | trimSuffix "/"))) "" }}
+{{- fail (printf "customComponents.local[%s].source must directly contain manifest.json" $component.name) }}
 {{- end }}
 ---
 apiVersion: v1

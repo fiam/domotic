@@ -36,8 +36,6 @@ infra/helm-values-*.yaml
 *.tmp
 *.log
 
-# custom integration reverse-engineering inputs and live captures (never commit)
-/.custom integration-re.*/
+# Reverse-engineering inputs and application packages (never commit)
 *.apk
 *.xapk
-/tests/custom integration/captures/
