@@ -25,7 +25,7 @@ Last verified: **2026-08-31**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
-| custom integration custom integration | version `0.8.0`; 33 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, logical-channel registry migration, Área → Divisão as Floor → Area, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
+| custom integration custom integration | version `0.9.0`; 37 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, logical-channel registry migration, Área → Divisão as Floor → Area, state schema, physical wall-button events, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, redacted unknown-message monitoring, and full inventory/mapping reload are verified |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
@@ -231,9 +231,9 @@ receiver action reverses loaded hub scenarios for exactly the selected actuator
 ID and sends one request to each associated emitter ID; it does not broaden
 either side to physical siblings. The request duration is a native config-entry
 option, defaults to 30 seconds, and is constrained to the Home Server's observed
-1–30-second range. A physical live-button MQTT event is still pending
-acceptance. A future protobuf mismatch deliberately uses MQTT only to trigger
-authoritative REST refreshes.
+1–30-second range. Live acceptance decoded a physical A–D wall press as the
+expected pressed event. A future protobuf mismatch deliberately uses MQTT only
+to trigger authoritative REST refreshes.
 
 Version 0.7.0 additionally verifies the authenticated
 `DeviceInstantReadingEvent` contract and converts its `consumed_mW` field to a
@@ -264,6 +264,16 @@ custom integration device rows matched their expected HA area with no missing ar
 or device-registry rows. All 148 light, cover, switch, and power entities were
 available after rollout. Existing non-empty HA floor assignments and devices
 moved to custom HA areas are preserved by sanitized migration contracts.
+
+Version 0.9.0 removes the deprecated `suggested_area` device field and adds one
+integration-level **Refresh inventory and mappings** action. The action uses
+Home Assistant's pinned config-entry reload callback so inventory, hierarchy,
+entities, power capabilities, and emitter assignments are rebuilt as one
+snapshot. Live acceptance observed the available → unavailable → available
+reload lifecycle, preserved all 729 registry entities, restored all 657 enabled
+runtime entities, and settled with no unavailable custom integration entities. English,
+Portuguese, and Spanish catalogs share the same config-flow, options, error,
+abort, and integration-action keys under a structural regression contract.
 
 The off-by-default unknown-message observer was enabled through the native
 options flow for a bounded live window, then disabled. It recorded only three
