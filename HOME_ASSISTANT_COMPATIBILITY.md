@@ -25,7 +25,7 @@ Last verified: **2026-08-31**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
-| custom integration custom integration | version `0.7.1`; 31 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, logical-channel registry migration, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
+| custom integration custom integration | version `0.8.0`; 33 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, logical-channel registry migration, Área → Divisão as Floor → Area, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
@@ -255,6 +255,15 @@ matches its Home Server division. This prevents a secondary channel from being
 shown under the primary sibling's name and area. The migration runs before
 platform setup because changing `device_info` alone does not move an existing
 Home Assistant entity-registry row.
+
+Version 0.8.0 maps the Home Server's Área → Divisão hierarchy to Home
+Assistant Floor → Area through the pinned floor, area, and device registry
+callbacks. The live inventory produced four floors and 18 named divisions;
+only the two globally colliding division rows were parent-qualified. All 146
+custom integration device rows matched their expected HA area with no missing area, floor,
+or device-registry rows. All 148 light, cover, switch, and power entities were
+available after rollout. Existing non-empty HA floor assignments and devices
+moved to custom HA areas are preserved by sanitized migration contracts.
 
 The off-by-default unknown-message observer was enabled through the native
 options flow for a bounded live window, then disabled. It recorded only three
