@@ -1,11 +1,13 @@
 version: '3'
 
 vars:
+  CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/../.." .ROOT_DIR)}}'
+  RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
   RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
   NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
   HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
-  TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default "../../infra/helm-values.yaml"}}'
-  VALUES_FILE: '{{.VALUES_FILE | default "../../values.yaml"}}'
+  TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
+  VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
   HELM_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
 
 tasks:

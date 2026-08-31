@@ -21,16 +21,16 @@ This project separates infrastructure management (Terraform) from application de
 
 ## Installation
 
-For a new single-node k3s host, complete [DEPLOYMENT.md](DEPLOYMENT.md) first.
-It covers k3s, remote cluster access, Traefik Gateway API, and the `.local`
-names advertised on the LAN. Run the repository tasks from the administrator
-machine whose default kubeconfig contains the `domotic` context.
+The recommended production layout is an independent private repository that
+contains only your non-secret configuration and one reviewed Domotic commit
+SHA. Task runs that revision through its remote-Taskfile support, so users do
+not need to fork or manually maintain a copy of this public repository.
 
 ### 1. Install the workstation tools
 
-Install `kubectl`, Terraform 1.7 or newer, Helm 3 or newer, Git, and
+Install `kubectl`, Terraform 1.7 or newer, Helm 3 or newer, Git, `jq`, and
 [Task](https://taskfile.dev/docs/installation). Backups additionally require
-`age`, `jq`, and the AWS CLI. For Task itself:
+`age` and the AWS CLI. For Task itself:
 
 ```sh
 # macOS
@@ -44,122 +44,164 @@ sudo apt-get install --yes task
 You also need a Cloudflare account with a managed domain and, outside the Kind
 development environment, a supported Zigbee adapter.
 
-### 2. Clone and create private configuration
+### 2. Create a private deployment repository
+
+Run these commands in whichever parent directory you use for projects. The
+directory name is arbitrary; no absolute workstation path is assumed:
 
 ```sh
-git clone https://github.com/fiam/domotic.git
-cd domotic
+mkdir home-deployment
+cd home-deployment
 
-cp infra/terraform.tfvars.example infra/terraform.tfvars
-cp examples/values-production.yaml values.yaml
+DOMOTIC_REF="$(git ls-remote https://github.com/fiam/domotic.git \
+  refs/heads/main | awk '{print $1}')"
+
+task --taskfile \
+  "https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref=${DOMOTIC_REF}" \
+  init DOMOTIC_REF="$DOMOTIC_REF"
 ```
 
-Edit `infra/terraform.tfvars` with the Cloudflare account, domain, and Zigbee
-network configuration. Seed mode requires an admin password so Helm can
-authenticate all Home Assistant API configuration. The username defaults to
-`admin`; the password goes only into the ignored variables, Terraform state,
-and a Kubernetes Secret:
+Review the selected commit before approving Task's first remote-source trust
+prompt. The generated `Taskfile.yml` pins that exact revision, initializes a
+new Git repository, and stores the materialized public source under the ignored
+`.domotic/source` directory.
+
+### 3. Prepare and connect the k3s host
+
+Complete the server-side commands in sections 1–3 and 5 of
+[the k3s host guide](DEPLOYMENT.md). They install k3s, enable Traefik's Gateway
+API provider, install Avahi, and advertise the two `.local` service names.
+
+Then import the server into the administrator's default kubeconfig without
+cloning this public repository:
+
+```sh
+task k3s:context \
+  SSH_USER=your-server-user \
+  SSH_HOST=your-server-hostname.local
+
+kubectl --context=domotic get nodes
+```
+
+The import script opens an SSH terminal so remote `sudo` can authenticate.
+Change `KUBE_CONTEXT` in the private `Taskfile.yml` if `domotic` is not the
+desired local context name.
+
+### 4. Select the credential references
+
+Edit the two references in the generated `Taskfile.yml`. Their URI schemes
+select the credential resolver independently:
+
+| Reference | Resolver |
+| --- | --- |
+| `keychain://ACCOUNT/SERVICE` | macOS Keychain generic password |
+| `op://VAULT/ITEM/FIELD` | [1Password CLI secret reference](https://www.1password.dev/cli/secret-reference-syntax/) |
+| `env://VARIABLE` | Environment variable, primarily for CI |
+| `sops://PATH#KEY` | Top-level string in an optional SOPS document |
+
+Install the command named by the chosen scheme: `security` ships with macOS,
+`op` comes from the 1Password CLI, and `sops` is required only for `sops://`.
+
+For macOS Keychain, the generated defaults work without embedding a username
+or filesystem path:
+
+```yaml
+CLOUDFLARE_API_TOKEN_REF: keychain://domotic/cloudflare-api-token
+HOMEASSISTANT_ADMIN_PASSWORD_REF: keychain://domotic/homeassistant-admin-password
+```
+
+Store and verify both values:
+
+```sh
+task secrets:set
+task secrets:check
+```
+
+For 1Password, use its native secret-reference syntax. The references are safe
+to commit; the values remain in 1Password:
+
+```yaml
+CLOUDFLARE_API_TOKEN_REF: op://Infrastructure/Cloudflare/credential
+HOMEASSISTANT_ADMIN_PASSWORD_REF: op://Infrastructure/HomeAssistant/password
+```
+
+The resolver detects `op://` and runs `op read`; `task secrets:set` is only for
+`keychain://` references, so create 1Password items with the app or CLI first.
+There is intentionally no `passwords://` scheme: Apple does not document a
+Passwords command-line integration, while Keychain generic passwords are
+accessible through macOS's `security` command.
+
+SOPS is optional, not an additional requirement. A password manager alone is
+enough for normal deployment. See
+[the extended credential reference guide](PRIVATE_DEPLOYMENT.md#credential-reference-formats)
+for SOPS, age-key references, environment-based CI, and custom resolvers.
+
+### 5. Configure, validate, and deploy
+
+Edit `config/infra/terraform.tfvars` with the Cloudflare account, domain,
+routes, R2 bucket choice, and protected Zigbee network settings. Edit
+`config/values.yaml` with the Zigbee adapter, persistence, and Home Assistant
+settings. Credentials do not belong in either file.
+
+For a new installation, leave the tracked bootstrap mode as:
 
 ```hcl
 homeassistant_bootstrap_mode = "seed"
-homeassistant_onboarding = {
-  password = "replace-with-a-long-unique-password"
-}
 ```
-
-The Helm hook uses Home Assistant's built-in but undocumented onboarding HTTP
-flow to create the owner and finish first-boot onboarding. With that temporary
-admin session it also reconciles core and HTTP settings and creates missing
-MQTT and R2 entries through their config flows, then revokes the token. See
-`HOME_ASSISTANT_COMPATIBILITY.md` before upgrading. It preserves completed
-onboarding and existing integration entries on later deployments. Change
-passwords through Home Assistant after the first boot; changing this Terraform
-value does not rotate an existing account or integration credential.
-
-When restoring a native Home Assistant backup onto a blank volume, use
-`homeassistant_bootstrap_mode = "restore"` and omit the owner block until the
-restore finishes. This leaves Home Assistant's **Upload backup** onboarding
-path available. Switching back to `seed` afterward does not overwrite restored
-configuration, storage, automations, scripts, or scenes. Supply credentials for
-an existing restored owner before switching back so the API hook can log in.
-
-Edit `values.yaml` with the serial device, adapter type,
-Home Assistant settings, storage, and route parent references described in
-[the k3s guide](DEPLOYMENT.md#6-attach-the-application-routes-to-traefik).
-Both files are ignored by Git, so pulling upstream changes does not overwrite
-local configuration. Do not put secrets in a tracked example file.
-
-Custom integrations are optional and are never selected by the repository.
-To install one, declare its immutable archive in Terraform or private Helm
-values as described in [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md).
-
-List the available workflows at any time:
 
 ```sh
 task --list
-```
-
-### 3. Plan and deploy
-
-The tasks default to the `domotic` kubeconfig context. Set `KUBE_CONTEXT` on a
-command if yours has a different name.
-
-```sh
 task check
-task infra:plan KUBE_CONTEXT=domotic
-task infra:apply KUBE_CONTEXT=domotic
-task helm:deploy KUBE_CONTEXT=domotic
-task helm:status KUBE_CONTEXT=domotic
+task secrets:check
+task plan
+task deploy
+task status
 ```
 
-`task infra:init` creates the `terraform-state` namespace when needed. Applying
-Terraform also generates the ignored `infra/helm-values.yaml`; `task
-helm:deploy` combines that generated file with the private root `values.yaml`
-using `helm upgrade --install`.
-
-The first apply works on an empty namespace. After every successful apply, the
-infrastructure task captures the live Zigbee keys into the ignored,
-mode-0600 `infra/zigbee-keys.tfvars.json`. Future plans load that file after the
-main variables file, so generated keys automatically become explicit,
-restorable Terraform inputs without appearing in terminal output.
-
-The encrypted R2 archive includes both this portable variable file and the live
-Kubernetes Secret and ConfigMap. The portable file records PAN ID and channel
-as recovery guards: they do not override the main variables, but Terraform
-blocks a mismatch unless a network change is explicitly forced. To reconstruct
-the portable file from a restored archive:
+Set `KUBE_CONTEXT` in the private `Taskfile.yml` if the installed context has a
+different name. Commit the private repository only after reviewing the plan;
+its `.gitignore` excludes generated Helm values, Zigbee keys, backup client
+credentials, restored archives, and the materialized public source.
 
 ```sh
-task backup:restore OBJECT=<object-key>
-task keys:import SOURCE=restore/<backup-directory>
+git add .
+git commit -m "chore: configure home deployment"
+git remote add origin <private-repository-url>
+git push -u origin main
 ```
 
-`task deploy` is the convenient single command for routine infrastructure and
-application updates.
+For a native Home Assistant backup, prepare the blank instance without editing
+the tracked seed mode or retrieving the admin-password reference:
 
-The chart ships no custom integration. Users can provide any public,
-immutable repository or release archive through
-`homeassistant_remote_custom_components`; the pod verifies its SHA-256 and
-mounts only the selected integration directory. Repository-local sources can
-instead be declared in private Helm values. See
+```sh
+task restore:plan
+task restore
+```
+
+Upload the native backup in Home Assistant, then make the admin-password
+reference resolve to an owner restored from that backup before the next normal
+`task deploy`.
+
+Custom integrations are optional and never selected by the repository. Add a
+checksum-pinned public archive through
+`homeassistant_remote_custom_components` as described in
 [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md).
 
-Component tasks also work locally. For example, `cd infra && task plan` is the
-same workflow as `task infra:plan` from the repository root.
+### 6. Access the services
 
-### 4. Access the services
+- **External**: the configured Cloudflare hostname
+- **Home Assistant on the LAN**: `http://homeassistant.local`
+- **Zigbee2MQTT on the LAN**: `http://zigbee2mqtt.local`
 
-- **External (Internet)**: https://homeassistant.example.com (via Cloudflare Tunnel)
-- **Internal (LAN)**: http://homeassistant.local (via HTTPRoute/Gateway)
-- **Zigbee2MQTT UI**: http://zigbee2mqtt.local
+### 7. Back up configuration and keys to R2
 
-### 5. Back up configuration and keys to R2
-
-Terraform can provision a protected Cloudflare R2 bucket, and the repository's
-backup task encrypts configuration, Terraform state, and live Kubernetes
-secrets locally with age before uploading them:
+Terraform can provision a protected R2 bucket. The repository backup task
+encrypts configuration, Terraform state, and live Kubernetes secrets locally
+with age before uploading them:
 
 ```sh
+cp config/backup.env.example config/backup.env
+chmod 0600 config/backup.env
 task backup
 task backup:list
 ```
@@ -178,6 +220,13 @@ an ignored staging directory without replacing active files.
 
 Kind is development tooling, not the production deployment path. Its Taskfile
 and manifests live under `dev/` and it installs the Zigbee coordinator emulator.
+Clone the public repository when working on the charts or development cluster:
+
+```sh
+git clone https://github.com/fiam/domotic.git
+cd domotic
+```
+
 When using Colima, follow
 [DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md) to make known LAN device
 addresses reachable and to preserve the correct Terraform teardown order:
@@ -260,7 +309,9 @@ before removing the bucket.
 ```
 domotic/
 ├── Taskfile.yml              # Repository-wide workflows
+├── Taskfile.remote.yml       # Commit-pinned private deployment entrypoint
 ├── BACKUP.md                 # Encrypted Cloudflare R2 backup and recovery
+├── PRIVATE_DEPLOYMENT.md     # Long-lived private configuration workflow
 ├── DEVELOPMENT_NETWORKING.md # Colima, Kind, and LAN routing safety
 ├── backup.env.example        # Private backup-client configuration template
 ├── charts/domotic/          # Helm chart (user-facing)
@@ -292,7 +343,8 @@ domotic/
 │   ├── values-minimal.yaml
 │   └── values-production.yaml
 │
-├── scripts/                 # Host, cluster, and R2 backup helpers
+├── scripts/                 # Host, cluster, backup, and credential helpers
+│   └── secret-reference.sh  # URI-dispatched credential resolver
 └── README.md
 ```
 
@@ -381,6 +433,12 @@ This protection applies to:
 - **ConfigMap**: `pan_id`, `channel` (non-sensitive but protected)
 
 ## Upgrading
+
+Private deployments upgrade by changing their single pinned `DOMOTIC_REF`,
+then running `task check`, `task backup`, `task plan`, and `task deploy`. Review
+[the private upgrade workflow](PRIVATE_DEPLOYMENT.md#5-maintain-and-upgrade)
+and [HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md) before
+changing the pin.
 
 ### Upgrade Home Assistant Version
 

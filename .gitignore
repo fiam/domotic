@@ -12,6 +12,7 @@
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+!/examples/private-deployment/config/infra/terraform.tfvars
 .terraform/
 .terraform-check/
 infra/helm-values.yaml
@@ -33,6 +34,7 @@ infra/helm-values-*.yaml
 *~
 
 # Temporary files
+.task/
 *.tmp
 *.log
 

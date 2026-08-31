@@ -1,0 +1,39 @@
+zigbee2mqtt:
+  image:
+    tag: "2.13.0"
+  config:
+    serial:
+      port: /dev/ttyACM0
+      adapter: ember
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: local-path
+  httpRoute:
+    enabled: true
+    parentRefs:
+      - name: traefik-gateway
+        namespace: kube-system
+        sectionName: web
+
+homeassistant:
+  image:
+    tag: "2026.8.3"
+  config:
+    name: "Home"
+  persistence:
+    enabled: true
+    size: 20Gi
+    storageClass: local-path
+  httpRoute:
+    enabled: true
+    parentRefs:
+      - name: traefik-gateway
+        namespace: kube-system
+        sectionName: web
+
+mosquitto:
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClass: local-path

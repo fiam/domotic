@@ -11,6 +11,25 @@ includes:
     taskfile: ./dev
     dir: ./dev
 
+vars:
+  CONFIG_DIR: '{{.CONFIG_DIR | default .ROOT_DIR}}'
+  RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
+  TF_VARS_FILE: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .RESOLVED_CONFIG_DIR)}}'
+  TF_KEYS_FILE: '{{.TF_KEYS_FILE | default (printf "%s/infra/zigbee-keys.tfvars.json" .RESOLVED_CONFIG_DIR)}}'
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
+  TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default .HELM_VALUES_FILE}}'
+  VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
+  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE | default (printf "%s/backup.env" .RESOLVED_CONFIG_DIR)}}'
+
+env:
+  CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
+  TF_VARS_FILE: '{{.TF_VARS_FILE}}'
+  TF_KEYS_FILE: '{{.TF_KEYS_FILE}}'
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE}}'
+  TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE}}'
+  VALUES_FILE: '{{.VALUES_FILE}}'
+  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE}}'
+
 tasks:
   default:
     desc: List available tasks
@@ -22,12 +41,43 @@ tasks:
     cmds:
       - task: infra:check
       - task: helm:check
+      - task: scripts:check
+
+  scripts:check:
+    desc: Validate deployment helper scripts
+    cmds:
+      - bash -n scripts/*.sh scripts/tests/*.sh
+      - bash scripts/tests/private-deployment.sh
+
+  config:check:
+    desc: Validate a private deployment configuration and its Git boundaries
+    cmds:
+      - >-
+        ./scripts/config-check.sh "{{.RESOLVED_CONFIG_DIR}}"
+        "{{.TF_VARS_FILE}}" "{{.VALUES_FILE}}"
+        "{{.TF_KEYS_FILE}}" "{{.HELM_VALUES_FILE}}"
+        "{{.BACKUP_ENV_FILE}}"
 
   deploy:
     desc: Apply infrastructure and deploy the chart
     cmds:
       - task: infra:apply
       - task: helm:deploy
+
+  restore:
+    desc: Prepare Home Assistant to import a native backup
+    cmds:
+      - task: infra:apply
+        vars:
+          HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: restore
+      - task: helm:deploy
+
+  restore:plan:
+    desc: Plan the native-backup restore preparation
+    cmds:
+      - task: infra:plan
+        vars:
+          HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: restore
 
   backup:
     desc: Encrypt configuration and state, then upload them to Cloudflare R2

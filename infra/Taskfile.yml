@@ -1,21 +1,29 @@
 version: '3'
 
 vars:
+  CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
+  RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
   KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH | default (printf "%s/.kube/config" .HOME)}}'
   TF_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
   STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
-  TF_VARS_FILE: '{{.TF_VARS_FILE | default "terraform.tfvars"}}'
-  TF_KEYS_FILE: '{{.TF_KEYS_FILE | default "zigbee-keys.tfvars.json"}}'
-  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default "helm-values.yaml"}}'
+  TF_VARS_FILE: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .RESOLVED_CONFIG_DIR)}}'
+  TF_KEYS_FILE: '{{.TF_KEYS_FILE | default (printf "%s/infra/zigbee-keys.tfvars.json" .RESOLVED_CONFIG_DIR)}}'
+  HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
+  VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
+  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE | default (printf "%s/backup.env" .RESOLVED_CONFIG_DIR)}}'
+  HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: '{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE | default ""}}'
   CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".terraform-check"}}'
 
 env:
+  CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
   KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH}}'
   KUBE_CTX: '{{.TF_KUBE_CONTEXT}}'
   KUBE_NAMESPACE: '{{.STATE_NAMESPACE}}'
   TF_VARS_FILE: '{{.TF_VARS_FILE}}'
   TF_KEYS_FILE: '{{.TF_KEYS_FILE}}'
   HELM_VALUES_FILE: '{{.HELM_VALUES_FILE}}'
+  VALUES_FILE: '{{.VALUES_FILE}}'
+  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE}}'
 
 tasks:
   default:
@@ -55,10 +63,16 @@ tasks:
     cmds:
       - task: init
       - |
+        bootstrap_mode='{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE}}'
+        case "$bootstrap_mode" in
+          "") bootstrap_mode_arg= ;;
+          seed|restore) bootstrap_mode_arg="-var=homeassistant_bootstrap_mode=$bootstrap_mode" ;;
+          *) echo "Invalid Home Assistant bootstrap mode: $bootstrap_mode" >&2; exit 1 ;;
+        esac
         if [ -f "{{.TF_KEYS_FILE}}" ]; then
-          terraform plan -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
+          terraform plan -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}" $bootstrap_mode_arg
         else
-          terraform plan -var-file="{{.TF_VARS_FILE}}"
+          terraform plan -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
         fi
 
   apply:
@@ -66,10 +80,16 @@ tasks:
     cmds:
       - task: init
       - |
+        bootstrap_mode='{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE}}'
+        case "$bootstrap_mode" in
+          "") bootstrap_mode_arg= ;;
+          seed|restore) bootstrap_mode_arg="-var=homeassistant_bootstrap_mode=$bootstrap_mode" ;;
+          *) echo "Invalid Home Assistant bootstrap mode: $bootstrap_mode" >&2; exit 1 ;;
+        esac
         if [ -f "{{.TF_KEYS_FILE}}" ]; then
-          terraform apply -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
+          terraform apply -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}" $bootstrap_mode_arg
         else
-          terraform apply -var-file="{{.TF_VARS_FILE}}"
+          terraform apply -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
         fi
       - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
       - task: helm-values
@@ -101,7 +121,10 @@ tasks:
   helm-values:
     desc: Write Terraform outputs consumed by the Helm chart
     cmds:
-      - terraform output -raw helm_values_yaml > "{{.HELM_VALUES_FILE}}"
+      - |
+        install -d -m 0700 "$(dirname "{{.HELM_VALUES_FILE}}")"
+        umask 077
+        terraform output -raw helm_values_yaml > "{{.HELM_VALUES_FILE}}"
 
   outputs:
     desc: Show Terraform outputs

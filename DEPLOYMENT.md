@@ -129,24 +129,24 @@ Traefik is exposed through k3s ServiceLB on the server's ports 80 and 443.
 ## 4. Configure remote `kubectl` and Helm access
 
 The k3s admin kubeconfig grants unrestricted cluster access. Copy it only to a
-trusted administrator machine and keep it private. On that machine, clone this
-repository, then merge the server configuration into the default kubeconfig
+trusted administrator machine and keep it private. After initializing the
+private deployment repository in
+[the README](README.md#2-create-a-private-deployment-repository), run this from
+that repository to merge the server configuration into the default kubeconfig
 under the distinct name `domotic`:
 
 ```sh
-git clone https://github.com/fiam/domotic.git
-cd domotic
+task k3s:context \
+  SSH_USER=your-server-user \
+  SSH_HOST=domotic-server.local
 
-./scripts/k3s-import-context.sh \
-  --user your-server-user \
-  --context domotic \
-  domotic-server.local
 kubectl config get-contexts
 kubectl --context=domotic get nodes
 ```
 
 Replace `your-server-user` with the account used to SSH into the server. The
-script allocates a terminal so `sudo` can request that account's password. It
+task materializes the pinned public source and the import script allocates a
+terminal so `sudo` can request that account's password. It
 backs up an existing configuration, avoids collisions with k3s's generic
 `default` names, and preserves the current context. Use
 `kubectl config use-context domotic` to make the imported context current, or
@@ -161,8 +161,8 @@ hostname does not create a LAN DNS or mDNS record. For a single-node home
 server, publish the application names from the host and point them at the IPv4
 address already advertised for the host's primary mDNS name.
 
-The names are configured once in `infra/terraform.tfvars` and passed to both
-Helm HTTPRoutes:
+The names are configured once in `config/infra/terraform.tfvars` in the
+private deployment repository and passed to both Helm HTTPRoutes:
 
 ```hcl
 local_http_hostnames = {
@@ -275,19 +275,14 @@ avahi-resolve-host-name -4 zigbee2mqtt.local
 
 ## 6. Attach the application routes to Traefik
 
-On the administrator machine, install the tools listed in
-[README.md](README.md#1-install-the-workstation-tools), then create the two
-private configuration files if you have not already done so:
-
-```sh
-cp infra/terraform.tfvars.example infra/terraform.tfvars
-cp examples/values-production.yaml values.yaml
-```
-
-Fill in `infra/terraform.tfvars`. If enabling R2, give the account API token
+On the administrator machine, continue from
+[the private deployment workflow](README.md#5-configure-validate-and-deploy).
+Fill in `config/infra/terraform.tfvars`. If enabling R2, give the account API token
 **Workers R2 Storage Read** and **Write**, set `cloudflare_api_token_id`, and
 configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
-`values.yaml`, including the serial adapter and site details.
+`config/values.yaml`, including the serial adapter and site details. Configure
+the two credential references in the private `Taskfile.yml`; do not add token
+or password assignments to the tracked Terraform variables.
 
 The repository installs no custom Home Assistant integration by default. If
 this deployment needs one, declare its public immutable archive in
@@ -296,27 +291,25 @@ private Helm values. Follow [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md)
 for checksum, archive-path, upgrade, and removal requirements.
 
 For a new Home Assistant installation, keep
-`homeassistant_bootstrap_mode="seed"` and set
-`homeassistant_onboarding.password` as shown in the variables example. The
-username defaults to `admin`. Terraform creates a Secret, and a one-shot Helm
-hook creates the first owner through Home Assistant's built-in but undocumented
-onboarding flow, completes the remaining steps, reconciles core and HTTP
-settings, and creates missing MQTT and R2 entries through their config flows.
-Its temporary login token is revoked. It never replaces an existing user,
-password, or integration entry.
+`homeassistant_bootstrap_mode="seed"`. The remote task resolves the configured
+Home Assistant password reference and Terraform creates a Secret. A one-shot
+Helm hook creates the first owner through Home Assistant's built-in but
+undocumented onboarding flow, completes the remaining steps, reconciles core
+and HTTP settings, and creates missing MQTT and R2 entries through their config
+flows. Its temporary login token is revoked. It never replaces an existing
+user, password, or integration entry.
 
-For a native Home Assistant backup recovery onto a blank volume, set
-`homeassistant_bootstrap_mode="restore"` before applying and deploying. Do not
-set `homeassistant_onboarding` yet. Open Home Assistant, choose **Upload
-backup**, and use the credentials and emergency-kit key from the backed-up
-system. After the restore succeeds, switching the variable back to `seed` is
-safe because the chart adopts and preserves restored configuration files and
-`.storage`. Before switching, set `homeassistant_onboarding` to credentials for
-an existing owner from the restored installation.
+For a native Home Assistant backup recovery onto a blank volume, run `task
+restore:plan` followed by `task restore`. These targets temporarily select
+restore mode without editing the tracked seed setting or resolving an admin
+password. Open Home Assistant, choose **Upload backup**, and use the credentials
+and emergency-kit key from the backed-up system. After the restore succeeds,
+make the configured password reference resolve to an existing restored owner
+before the next normal deployment.
 
 Use the following route attachment for k3s's packaged Traefik. Terraform
 supplies both route hostnames from `local_http_hostnames`, so do not repeat them
-in `values.yaml`:
+in `config/values.yaml`:
 
 ```yaml
 homeassistant:
@@ -336,25 +329,20 @@ zigbee2mqtt:
         sectionName: web
 ```
 
-Validate, review, and deploy from the repository root. These tasks explicitly
-use the imported context and do not change your current `kubectl` context:
+Validate, review, and deploy from the private repository root. These tasks use
+the imported context and do not change your current `kubectl` context:
 
 ```sh
 task check
-task infra:plan KUBE_CONTEXT=domotic
-task infra:apply KUBE_CONTEXT=domotic
+task secrets:check
+task plan
+task deploy
+task status
 ```
 
-The infrastructure task captures any generated Zigbee keys into the
-ignored `infra/zigbee-keys.tfvars.json`, which subsequent plans load
-automatically. Then install the chart:
-
-```sh
-task helm:deploy KUBE_CONTEXT=domotic
-task helm:status KUBE_CONTEXT=domotic
-```
-
-For later updates, `task deploy KUBE_CONTEXT=domotic` runs both layers in order.
+The infrastructure task captures any generated Zigbee keys into the ignored
+`config/infra/zigbee-keys.tfvars.json`, which subsequent plans load
+automatically.
 
 Verify that Traefik accepted the routes:
 

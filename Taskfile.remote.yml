@@ -1,0 +1,299 @@
+version: '3'
+
+# This Taskfile is intentionally self-contained. Task downloads remote
+# Taskfiles without exposing their repository checkout, so bootstrap creates a
+# detached, commit-pinned source tree before delegating to the main Taskfile.
+
+vars:
+  PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
+  CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/config" .PRIVATE_ROOT)}}'
+  DOMOTIC_SOURCE_DIR: '{{.DOMOTIC_SOURCE_DIR | default (printf "%s/.domotic/source" .PRIVATE_ROOT)}}'
+  DOMOTIC_REPOSITORY: '{{.DOMOTIC_REPOSITORY | default "https://github.com/fiam/domotic.git"}}'
+  DOMOTIC_REF: '{{.DOMOTIC_REF}}'
+  KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH | default (printf "%s/.kube/config" .HOME)}}'
+  KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
+  STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
+  RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
+  NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
+  SSH_USER: '{{.SSH_USER | default ""}}'
+  SSH_HOST: '{{.SSH_HOST | default ""}}'
+  SECRET_RESOLVER: '{{.SECRET_RESOLVER | default ""}}'
+  CLOUDFLARE_API_TOKEN_REF: '{{.CLOUDFLARE_API_TOKEN_REF | default ""}}'
+  HOMEASSISTANT_ADMIN_PASSWORD_REF: '{{.HOMEASSISTANT_ADMIN_PASSWORD_REF | default ""}}'
+  SOPS_AGE_KEY_REF: '{{.SOPS_AGE_KEY_REF | default ""}}'
+  WITH_HOMEASSISTANT_ADMIN: '{{.WITH_HOMEASSISTANT_ADMIN | default "true"}}'
+
+env:
+  DOMOTIC_SECRET_RESOLVER: '{{.SECRET_RESOLVER}}'
+  DOMOTIC_SECRET_BASE_DIR: '{{.PRIVATE_ROOT}}'
+  DOMOTIC_CLOUDFLARE_API_TOKEN_REF: '{{.CLOUDFLARE_API_TOKEN_REF}}'
+  DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF: '{{.HOMEASSISTANT_ADMIN_PASSWORD_REF}}'
+  DOMOTIC_SOPS_AGE_KEY_REF: '{{.SOPS_AGE_KEY_REF}}'
+  DOMOTIC_WITH_HOMEASSISTANT_ADMIN: '{{.WITH_HOMEASSISTANT_ADMIN}}'
+  DOMOTIC_SSH_USER: '{{.SSH_USER}}'
+  DOMOTIC_SSH_HOST: '{{.SSH_HOST}}'
+
+tasks:
+  default:
+    desc: List private deployment tasks
+    cmds:
+      - task --list
+
+  bootstrap:
+    desc: Materialize the pinned Domotic source in the ignored local cache
+    requires:
+      vars: [DOMOTIC_REF]
+    status:
+      - >-
+        printf '%s\n' "{{.DOMOTIC_REF}}" | grep -Eq '^[0-9a-f]{40}$' &&
+        test ! -L "{{.DOMOTIC_SOURCE_DIR}}" &&
+        test ! -L "{{.DOMOTIC_SOURCE_DIR}}/.git" &&
+        test -d "{{.DOMOTIC_SOURCE_DIR}}/.git" &&
+        test "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" remote get-url origin)" = "{{.DOMOTIC_REPOSITORY}}" &&
+        test "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" rev-parse HEAD)" = "{{.DOMOTIC_REF}}" &&
+        git -C "{{.DOMOTIC_SOURCE_DIR}}" diff --quiet &&
+        git -C "{{.DOMOTIC_SOURCE_DIR}}" diff --cached --quiet &&
+        test -z "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" ls-files --others --exclude-standard)"
+    cmds:
+      - |
+        ref='{{.DOMOTIC_REF}}'
+        repository='{{.DOMOTIC_REPOSITORY}}'
+        source_dir='{{.DOMOTIC_SOURCE_DIR}}'
+
+        printf '%s\n' "$ref" | grep -Eq '^[0-9a-f]{40}$' || {
+          echo 'DOMOTIC_REF must be a full 40-character commit SHA.' >&2
+          exit 1
+        }
+        test ! -L "$source_dir" || {
+          echo "Refusing a symlinked source cache: $source_dir" >&2
+          exit 1
+        }
+        if test ! -d "$source_dir/.git"; then
+          test ! -e "$source_dir" || {
+            echo "Source cache exists but is not a Git repository: $source_dir" >&2
+            exit 1
+          }
+          install -d -m 0700 "$(dirname "$source_dir")"
+          git clone --quiet --filter=blob:none --no-checkout "$repository" "$source_dir"
+        fi
+        test ! -L "$source_dir/.git" || {
+          echo "Refusing a source cache with a symlinked .git entry: $source_dir" >&2
+          exit 1
+        }
+        test "$(git -C "$source_dir" remote get-url origin)" = "$repository" || {
+          echo 'The cached source has an unexpected origin URL.' >&2
+          exit 1
+        }
+        if test "$(git -C "$source_dir" rev-parse HEAD 2>/dev/null || true)" != "$ref"; then
+          git -C "$source_dir" fetch --quiet --force --depth 1 origin "$ref"
+          git -C "$source_dir" checkout --quiet --detach --force FETCH_HEAD
+        else
+          git -C "$source_dir" reset --quiet --hard "$ref"
+        fi
+        git -C "$source_dir" clean -ffd
+        test "$(git -C "$source_dir" rev-parse HEAD)" = "$ref"
+
+  init:
+    desc: Initialize a private deployment repository in the working directory
+    deps: [bootstrap]
+    cmds:
+      - |
+        private_root='{{.PRIVATE_ROOT}}'
+        source_dir='{{.DOMOTIC_SOURCE_DIR}}'
+        ref='{{.DOMOTIC_REF}}'
+
+        test ! -e "$private_root/Taskfile.yml" || {
+          echo "Refusing to replace an existing Taskfile.yml in $private_root" >&2
+          exit 1
+        }
+        test ! -e "$private_root/config" || {
+          echo "Refusing to replace an existing config directory in $private_root" >&2
+          exit 1
+        }
+        cp -R "$source_dir/examples/private-deployment/." "$private_root/"
+        sed -i.bak "s/REPLACE_WITH_FULL_COMMIT_SHA/$ref/g" "$private_root/Taskfile.yml"
+        rm "$private_root/Taskfile.yml.bak"
+        private_root_physical="$(cd "$private_root" && pwd -P)"
+        existing_git_root="$(git -C "$private_root" rev-parse --show-toplevel 2>/dev/null || true)"
+        if test "$existing_git_root" != "$private_root_physical"; then
+          git -C "$private_root" init -b main
+        fi
+        printf 'Private deployment scaffold created in %s.\n' "$private_root"
+        printf 'Edit config/, store credentials, then run task check and task plan.\n'
+
+  config:check:
+    desc: Validate private configuration and Git secret boundaries
+    deps: [bootstrap]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" config:check
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+
+  k3s:context:
+    desc: Import the k3s server into the default kubeconfig
+    deps: [bootstrap]
+    requires:
+      vars: [SSH_USER, SSH_HOST]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/k3s-import-context.sh"
+        --user "$DOMOTIC_SSH_USER"
+        --context "{{.KUBE_CONTEXT}}"
+        "$DOMOTIC_SSH_HOST"
+
+  check:
+    desc: Validate the pinned source and private configuration
+    deps: [bootstrap]
+    cmds:
+      - task --dir "{{.DOMOTIC_SOURCE_DIR}}" check
+      - task: config:check
+
+  secrets:check:
+    desc: Confirm that the configured references resolve deployment secrets
+    deps: [bootstrap]
+    cmds:
+      - "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh --check"
+
+  secrets:set:
+    desc: Prompt for deployment secrets referenced through macOS Keychain
+    deps: [bootstrap]
+    preconditions:
+      - sh: >-
+          case "$DOMOTIC_CLOUDFLARE_API_TOKEN_REF" in keychain://*) true;; *) false;; esac &&
+          case "$DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF" in keychain://*) true;; *) false;; esac
+        msg: secrets:set requires keychain:// references for both deployment credentials.
+    cmds:
+      - |
+        resolver="$DOMOTIC_SECRET_RESOLVER"
+        if test -z "$resolver"; then
+          resolver="{{.DOMOTIC_SOURCE_DIR}}/scripts/secret-reference.sh"
+        fi
+        "$resolver" set "$DOMOTIC_CLOUDFLARE_API_TOKEN_REF"
+        "$resolver" set "$DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF"
+
+  plan:
+    desc: Plan the private deployment with resolved credentials
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" infra:plan
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+
+  deploy:
+    desc: Apply Terraform and deploy the pinned Helm chart
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" deploy
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+        RELEASE_NAME="{{.RELEASE_NAME}}"
+        NAMESPACE="{{.NAMESPACE}}"
+
+  restore:
+    desc: Prepare Home Assistant to import a native backup
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        --without-homeassistant-admin --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+        RELEASE_NAME="{{.RELEASE_NAME}}"
+        NAMESPACE="{{.NAMESPACE}}"
+
+  restore:plan:
+    desc: Plan the native-backup restore preparation
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        --without-homeassistant-admin --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:plan
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+
+  status:
+    desc: Show the deployed release and workload status
+    deps: [bootstrap]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" helm:status
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        RELEASE_NAME="{{.RELEASE_NAME}}"
+        NAMESPACE="{{.NAMESPACE}}"
+
+  backup:
+    desc: Create an encrypted configuration backup in R2
+    deps: [config:check]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+
+  backup:list:
+    desc: List encrypted configuration backups in R2
+    deps: [bootstrap]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup:list
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+
+  backup:restore:
+    desc: Restore one encrypted configuration backup into config/restore
+    deps: [bootstrap]
+    requires:
+      vars: [OBJECT]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup:restore
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        OBJECT="{{.OBJECT}}"
+
+  keys:capture:
+    desc: Capture the live Zigbee identity into the private runtime files
+    deps: [bootstrap]
+    cmds:
+      - >-
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" keys:capture
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+
+  destroy:
+    desc: Uninstall the release and destroy Terraform-managed resources
+    deps: [config:check]
+    prompt: This removes the private deployment. Continue?
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" destroy
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
+        KUBE_CONTEXT="{{.KUBE_CONTEXT}}"
+        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+        RELEASE_NAME="{{.RELEASE_NAME}}"
+        NAMESPACE="{{.NAMESPACE}}"
+
+  version:
+    desc: Show the required and materialized Domotic revisions
+    deps: [bootstrap]
+    cmds:
+      - echo "Pinned revision {{.DOMOTIC_REF}}"
+      - git -C "{{.DOMOTIC_SOURCE_DIR}}" log -1 --oneline

@@ -9,8 +9,9 @@ bucket.
 
 The archive contains:
 
-- the selected Terraform variables, portable Zigbee key variables, root
-  `values.yaml`, and generated Helm values when present;
+- the selected Terraform variables, portable Zigbee key variables,
+  `values.yaml`, and generated Helm values when present (all resolved beneath
+  `CONFIG_DIR` for a private deployment);
 - the current Terraform state, pulled from the configured Kubernetes backend;
 - the live `zigbee-keys` Secret and `zigbee-network` ConfigMap;
 - the live `cloudflared-tunnel-token` Secret;
@@ -193,6 +194,12 @@ Fill `backup.env` with the account ID, bucket name, the same derived R2
 credentials, public age recipient, and the absolute path to the private age
 identity. The configuration backup defaults to the separate `domotic/` prefix,
 while Home Assistant uses `home-assistant/`. The file is ignored by Git.
+
+In a private deployment repository the file is `config/backup.env`; the remote
+Taskfile supplies its path automatically. `VALUES_FILE`, `TF_VARS_FILE`,
+`TF_KEYS_FILE`, and `HELM_VALUES_FILE` may point outside the public source, and
+the backup records those selected files without copying them into the
+materialized checkout.
 
 You can read the generated credential values from the Kubernetes Secret:
 

@@ -13,6 +13,8 @@
 #   - Specified Domains / Zone / Read
 #   - Specified Domains / DNS / Edit
 # Add Entire Account / Workers R2 Storage / Read and Write when enabling R2.
+# The private remote-Taskfile workflow injects this from its selected secret
+# provider instead of storing the assignment in terraform.tfvars.
 cloudflare_api_token = "<your-cloudflare-api-token>"
 
 # The token's 32-character ID, not its cfat_ secret. Required only for R2.
@@ -57,6 +59,8 @@ homeassistant_bootstrap_mode = "seed" # or "restore"
 # default to "Home Administrator", "admin", and "en". Terraform stores the
 # values in a Kubernetes Secret; existing users are never overwritten. Use
 # restore mode instead when onboarding manually or importing a native backup.
+# The private remote-Taskfile workflow injects this object from its selected
+# secret provider instead of storing the assignment in terraform.tfvars.
 homeassistant_onboarding = {
   password = "replace-with-a-long-unique-password"
 }

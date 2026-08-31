@@ -14,6 +14,12 @@ task infra:plan KUBE_CONTEXT=domotic
 task infra:apply KUBE_CONTEXT=domotic
 ```
 
+For a long-lived installation, prefer the independent private repository in
+[PRIVATE_DEPLOYMENT.md](../PRIVATE_DEPLOYMENT.md). `CONFIG_DIR` mirrors the
+repository layout: Terraform inputs and generated values live under
+`CONFIG_DIR/infra`, while Helm values and `backup.env` live at its root. The
+default remains this repository, preserving the direct-clone workflow.
+
 The initialization task creates the state namespace and supplies the kubeconfig
 path, context, and state namespace to Terraform's partially configured backend.
 Override these settings when needed:
@@ -41,9 +47,10 @@ task apply KUBE_CONTEXT=domotic
 task keys:capture KUBE_CONTEXT=domotic
 ```
 
-Use `TF_VARS_FILE`, `TF_KEYS_FILE`, and `HELM_VALUES_FILE` for an isolated
-configuration, such as the end-to-end Kind test documented in the root README.
-Paths are relative to `infra/`:
+Use `CONFIG_DIR` for an external private configuration. Individual
+`TF_VARS_FILE`, `TF_KEYS_FILE`, and `HELM_VALUES_FILE` overrides remain
+available for isolated configurations such as the end-to-end Kind test.
+Absolute paths are recommended when invoking this component Taskfile directly:
 
 ```sh
 task apply \

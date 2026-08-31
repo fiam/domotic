@@ -4,7 +4,10 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(dirname "$script_dir")"
-backup_env_file="${BACKUP_ENV_FILE:-$repository_root/backup.env}"
+config_dir="${CONFIG_DIR:-$repository_root}"
+[[ "$config_dir" == /* ]] || config_dir="$repository_root/$config_dir"
+backup_env_file="${BACKUP_ENV_FILE:-$config_dir/backup.env}"
+[[ "$backup_env_file" == /* ]] || backup_env_file="$config_dir/$backup_env_file"
 
 if [[ -f "$backup_env_file" ]]; then
   set -a
@@ -24,6 +27,21 @@ require_command() {
 
 require_variable() {
   [[ -n "${!1:-}" ]] || fail "set $1 in $backup_env_file or the environment"
+}
+
+resolve_config_path() {
+  local configured_path="$1"
+  local legacy_base="$2"
+
+  if [[ "$configured_path" == /* ]]; then
+    printf '%s\n' "$configured_path"
+  elif [[ -e "$config_dir/$configured_path" ]]; then
+    printf '%s\n' "$config_dir/$configured_path"
+  elif [[ -e "$legacy_base/$configured_path" ]]; then
+    printf '%s\n' "$legacy_base/$configured_path"
+  else
+    printf '%s\n' "$config_dir/$configured_path"
+  fi
 }
 
 configure_r2() {
@@ -63,17 +81,19 @@ make_backup() {
   require_command terraform
   require_variable R2_AGE_RECIPIENT
 
-  local terraform_vars_path="${TF_VARS_FILE:-terraform.tfvars}"
-  local terraform_keys_path="${TF_KEYS_FILE:-zigbee-keys.tfvars.json}"
-  local helm_values_path="${HELM_VALUES_FILE:-helm-values.yaml}"
+  local terraform_vars_path
+  local terraform_keys_path
+  local helm_values_path
+  local values_path
 
-  [[ "$terraform_vars_path" == /* ]] || terraform_vars_path="$repository_root/infra/$terraform_vars_path"
-  [[ "$terraform_keys_path" == /* ]] || terraform_keys_path="$repository_root/infra/$terraform_keys_path"
-  [[ "$helm_values_path" == /* ]] || helm_values_path="$repository_root/infra/$helm_values_path"
+  terraform_vars_path="$(resolve_config_path "${TF_VARS_FILE:-infra/terraform.tfvars}" "$repository_root/infra")"
+  terraform_keys_path="$(resolve_config_path "${TF_KEYS_FILE:-infra/zigbee-keys.tfvars.json}" "$repository_root/infra")"
+  helm_values_path="$(resolve_config_path "${HELM_VALUES_FILE:-infra/helm-values.yaml}" "$repository_root/infra")"
+  values_path="$(resolve_config_path "${VALUES_FILE:-values.yaml}" "$repository_root")"
 
   [[ -f "$terraform_vars_path" ]] ||
     fail "missing Terraform variables file: $terraform_vars_path"
-  [[ -f "$repository_root/values.yaml" ]] || fail "missing values.yaml"
+  [[ -f "$values_path" ]] || fail "missing Helm values file: $values_path"
 
   local app_namespace
   local git_revision
@@ -103,7 +123,7 @@ make_backup() {
   mkdir -p "$payload_dir/infra" "$payload_dir/kubernetes"
 
   cp "$terraform_vars_path" "$payload_dir/infra/$(basename "$terraform_vars_path")"
-  cp "$repository_root/values.yaml" "$payload_dir/values.yaml"
+  cp "$values_path" "$payload_dir/values.yaml"
   if [[ -f "$terraform_keys_path" ]]; then
     cp "$terraform_keys_path" "$payload_dir/infra/$(basename "$terraform_keys_path")"
   fi
@@ -208,7 +228,7 @@ restore_backup() {
   local normalized_entry
 
   restore_name="$(basename "$object_key" .tar.gz.age)"
-  destination="${RESTORE_DIR:-$repository_root/restore/$restore_name}"
+  destination="${RESTORE_DIR:-$config_dir/restore/$restore_name}"
   [[ ! -e "$destination" ]] || fail "restore destination already exists: $destination"
 
   temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-restore.XXXXXX")"

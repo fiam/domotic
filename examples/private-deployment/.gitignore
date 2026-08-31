@@ -1,0 +1,14 @@
+.DS_Store
+
+# Materialized, commit-pinned public source.
+/.domotic/
+/.task/
+
+# Generated and sensitive runtime files.
+/config/backup.env
+/config/infra/helm-values.yaml
+/config/infra/zigbee-keys.tfvars.json
+/config/restore/
+
+# Optional plaintext created while migrating to an encrypted file.
+/config/secrets.yaml
