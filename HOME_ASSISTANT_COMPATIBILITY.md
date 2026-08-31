@@ -25,7 +25,7 @@ Last verified: **2026-08-31**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
-| custom integration custom integration | version `0.7.0`; 29 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
+| custom integration custom integration | version `0.7.1`; 31 sanitized contracts and hassfest pass against `2026.8.3`; live authentication, inventory, logical-channel registry migration, state schema, actuator commands, emitter mappings, identification, 74 power entities, metering schema/reporting, and redacted unknown-message monitoring are verified |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
@@ -206,8 +206,9 @@ not descriptive duplicates. It contains 72 physical modules represented by 74
 actuator-channel rows and 72 emitter rows. The official client groups physical
 siblings by hardware address, while their A–D and IR actions are programmable
 `DefaultBinds` scenarios. Home Assistant exposes the named emitter separately
-and links it to the actuator device through `via_device`; multiple actuator
-channels on one physical module remain grouped.
+and links it to the primary actuator device through `via_device`. Each logical
+actuator channel is also a separate linked device because sibling channels can
+have different names and divisions.
 The live server also reports `switchedOn=false` for every lighting regulator,
 including outputs with a positive `levelPercentage`; regulator on/off and
 brightness state must therefore be derived from the level. Bidirectional relay,
@@ -220,7 +221,8 @@ endpoints 13 through 28. All 24 assignments from six live standalone
 first inspected individually. The v0.6.1 Kind-cluster acceptance then resolved
 all 288 A–D assignments from all 72 emitters, registered 72 disabled-by-default
 IR receiver entities, and exposed all named emitters as linked Home Assistant
-devices. The live registry contains 66 actuator devices and 72 emitter devices;
+devices. The live registry contains 74 actuator devices and 72 emitter devices;
+eight secondary actuator channels link to their primary physical sibling;
 66 emitters carry a `via_device` actuator link and six standalone
 `QuadPressureButton` emitters do not. The identification-LED REST command is
 covered by the sanitized contract. Version 0.6.5 sends direct light/blind and
@@ -244,6 +246,15 @@ coordinator healthy, decoded numeric readings for 66 rows during the observed
 window, and left eight rows available but unknown pending a successful sample.
 Two transient lease precondition failures were retained as aggregate diagnostics
 and are retried automatically; they did not affect entity availability.
+
+Version 0.7.1 splits logical actuator siblings into separate linked Home
+Assistant devices. The live dual-channel migration confirmed that each
+actuator and its power sensor use the same logical device, both observed
+multi-output modules expose distinct device IDs, and every actuator device area
+matches its Home Server division. This prevents a secondary channel from being
+shown under the primary sibling's name and area. The migration runs before
+platform setup because changing `device_info` alone does not move an existing
+Home Assistant entity-registry row.
 
 The off-by-default unknown-message observer was enabled through the native
 options flow for a bounded live window, then disabled. It recorded only three
