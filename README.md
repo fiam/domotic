@@ -1,6 +1,6 @@
 # Domotic
 
-[![Kubernetes](https://img.shields.io/badge/Kubernetes-Gateway%20API-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://gateway-api.sigs.k8s.io/)
+[![Gateway API v1.0.0+](https://img.shields.io/badge/Gateway%20API-v1.0.0%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://gateway-api.sigs.k8s.io/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Core-18BCF2?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
 [![Terraform](https://img.shields.io/badge/Terraform-1.7%2B-844FBA?style=flat-square&logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
 [![Helm](https://img.shields.io/badge/Helm-3-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
