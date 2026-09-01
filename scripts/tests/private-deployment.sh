@@ -167,11 +167,11 @@ fi
 
 source_cache="$temp_root/remote/.domotic/source"
 revision="$(git -C "$fixture_repository" rev-parse HEAD)"
+git -C "$fixture_repository" branch test-release "$revision"
 task --silent --taskfile "$repository_root/Taskfile.remote.yml" bootstrap \
   PRIVATE_ROOT="$temp_root/remote" \
   DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
-  DOMOTIC_REF="$revision"
+  DOMOTIC_REPOSITORY="$fixture_repository"
 [[ "$(git -C "$source_cache" rev-parse HEAD)" == "$revision" ]] ||
   fail "remote Taskfile bootstrap did not materialize the pinned revision"
 
@@ -180,16 +180,24 @@ printf '%s\n' untracked > "$source_cache/untracked-test-file"
 task --silent --taskfile "$repository_root/Taskfile.remote.yml" bootstrap \
   PRIVATE_ROOT="$temp_root/remote" \
   DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
-  DOMOTIC_REF="$revision"
+  DOMOTIC_REPOSITORY="$fixture_repository"
 [[ -z "$(git -C "$source_cache" status --short)" ]] ||
   fail "remote Taskfile bootstrap did not normalize the source cache"
+
+tag_taskfile="$temp_root/Taskfile.remote.yml?ref=test-release"
+tag_source_cache="$temp_root/tagged/.domotic/source"
+cp "$repository_root/Taskfile.remote.yml" "$tag_taskfile"
+task --silent --taskfile "$tag_taskfile" bootstrap \
+  PRIVATE_ROOT="$temp_root/tagged" \
+  DOMOTIC_SOURCE_DIR="$tag_source_cache" \
+  DOMOTIC_REPOSITORY="$fixture_repository"
+[[ "$(git -C "$tag_source_cache" rev-parse HEAD)" == "$revision" ]] ||
+  fail "remote Taskfile bootstrap did not resolve the ref from its URL"
 
 initialized_root="$temp_root/initialized"
 task --silent --taskfile "$repository_root/Taskfile.remote.yml" init \
   PRIVATE_ROOT="$initialized_root" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
-  DOMOTIC_REF="$revision"
+  DOMOTIC_REPOSITORY="$fixture_repository"
 grep -Fq "DOMOTIC_REF: $revision" "$initialized_root/Taskfile.yml" ||
   fail "remote initialization did not pin the selected revision"
 grep -Fq "SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'" \

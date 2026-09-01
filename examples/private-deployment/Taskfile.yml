@@ -10,7 +10,6 @@ includes:
     taskfile: 'https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref={{.DOMOTIC_REF}}'
     flatten: true
     vars:
-      DOMOTIC_REF: '{{.DOMOTIC_REF}}'
       PRIVATE_ROOT: '{{.ROOT_DIR}}'
       CONFIG_DIR: '{{.ROOT_DIR}}/config'
       SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'

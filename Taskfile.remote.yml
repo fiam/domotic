@@ -1,15 +1,28 @@
 version: '3'
 
-# This Taskfile is intentionally self-contained. Task downloads remote
-# Taskfiles without exposing their repository checkout, so bootstrap creates a
-# detached, commit-pinned source tree before delegating to the main Taskfile.
+# This Taskfile is intentionally self-contained. It reads the requested Git
+# revision from its own remote URL, then creates a detached, commit-pinned
+# source tree before delegating to the main Taskfile.
 
 vars:
   PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
   CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/config" .PRIVATE_ROOT)}}'
   DOMOTIC_SOURCE_DIR: '{{.DOMOTIC_SOURCE_DIR | default (printf "%s/.domotic/source" .PRIVATE_ROOT)}}'
   DOMOTIC_REPOSITORY: '{{.DOMOTIC_REPOSITORY | default "https://github.com/fiam/domotic.git"}}'
-  DOMOTIC_REF: '{{.DOMOTIC_REF}}'
+  DOMOTIC_REQUESTED_REF:
+    sh: |
+      requested_ref="$({
+        printf '%s\n' '{{.TASKFILE}}' |
+          awk -F '[?&]' '{
+            for (field = 1; field <= NF; field++) {
+              if ($field ~ /^ref=/) {
+                print substr($field, 5)
+                exit
+              }
+            }
+          }'
+      })"
+      printf '%s\n' "${requested_ref:-main}"
   KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH | default (printf "%s/.kube/config" .HOME)}}'
   KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
   STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
@@ -30,28 +43,15 @@ tasks:
       - task --list
 
   bootstrap:
-    desc: Materialize the pinned Domotic source in the ignored local cache
-    requires:
-      vars: [DOMOTIC_REF]
-    status:
-      - >-
-        printf '%s\n' "{{.DOMOTIC_REF}}" | grep -Eq '^[0-9a-f]{40}$' &&
-        test ! -L "{{.DOMOTIC_SOURCE_DIR}}" &&
-        test ! -L "{{.DOMOTIC_SOURCE_DIR}}/.git" &&
-        test -d "{{.DOMOTIC_SOURCE_DIR}}/.git" &&
-        test "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" remote get-url origin)" = "{{.DOMOTIC_REPOSITORY}}" &&
-        test "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" rev-parse HEAD)" = "{{.DOMOTIC_REF}}" &&
-        git -C "{{.DOMOTIC_SOURCE_DIR}}" diff --quiet &&
-        git -C "{{.DOMOTIC_SOURCE_DIR}}" diff --cached --quiet &&
-        test -z "$(git -C "{{.DOMOTIC_SOURCE_DIR}}" ls-files --others --exclude-standard)"
+    desc: Materialize the requested Domotic revision in the ignored local cache
     cmds:
       - |
-        ref='{{.DOMOTIC_REF}}'
+        requested_ref='{{.DOMOTIC_REQUESTED_REF}}'
         repository='{{.DOMOTIC_REPOSITORY}}'
         source_dir='{{.DOMOTIC_SOURCE_DIR}}'
 
-        printf '%s\n' "$ref" | grep -Eq '^[0-9a-f]{40}$' || {
-          echo 'DOMOTIC_REF must be a full 40-character commit SHA.' >&2
+        test -n "$requested_ref" || {
+          echo 'The Taskfile URL has an empty ref parameter.' >&2
           exit 1
         }
         test ! -L "$source_dir" || {
@@ -74,14 +74,26 @@ tasks:
           echo 'The cached source has an unexpected origin URL.' >&2
           exit 1
         }
-        if test "$(git -C "$source_dir" rev-parse HEAD 2>/dev/null || true)" != "$ref"; then
-          git -C "$source_dir" fetch --quiet --force --depth 1 origin "$ref"
-          git -C "$source_dir" checkout --quiet --detach --force FETCH_HEAD
+
+        if printf '%s\n' "$requested_ref" | grep -Eq '^[0-9a-fA-F]{40}$'; then
+          resolved_ref="$requested_ref"
+          if ! git -C "$source_dir" cat-file -e "$resolved_ref^{commit}" 2>/dev/null; then
+            git -C "$source_dir" fetch --quiet --force --depth 1 origin "$requested_ref"
+          fi
         else
-          git -C "$source_dir" reset --quiet --hard "$ref"
+          git check-ref-format --allow-onelevel "$requested_ref" >/dev/null 2>&1 || {
+            echo "Invalid Git ref in the Taskfile URL: $requested_ref" >&2
+            exit 1
+          }
+          git -C "$source_dir" fetch --quiet --force --depth 1 origin "$requested_ref"
+          resolved_ref="$(git -C "$source_dir" rev-parse 'FETCH_HEAD^{commit}')"
         fi
+        git -C "$source_dir" cat-file -e "$resolved_ref^{commit}"
+        git -C "$source_dir" checkout --quiet --detach --force "$resolved_ref"
+        git -C "$source_dir" reset --quiet --hard "$resolved_ref"
         git -C "$source_dir" clean -ffd
-        test "$(git -C "$source_dir" rev-parse HEAD)" = "$ref"
+        test "$(git -C "$source_dir" rev-parse HEAD)" = \
+          "$(git -C "$source_dir" rev-parse "$resolved_ref^{commit}")"
 
   init:
     desc: Initialize a private deployment repository in the working directory
@@ -90,7 +102,7 @@ tasks:
       - |
         private_root='{{.PRIVATE_ROOT}}'
         source_dir='{{.DOMOTIC_SOURCE_DIR}}'
-        ref='{{.DOMOTIC_REF}}'
+        ref="$(git -C "$source_dir" rev-parse HEAD)"
 
         test ! -e "$private_root/Taskfile.yml" || {
           echo "Refusing to replace an existing Taskfile.yml in $private_root" >&2
@@ -282,8 +294,8 @@ tasks:
         NAMESPACE="{{.NAMESPACE}}"
 
   version:
-    desc: Show the required and materialized Domotic revisions
+    desc: Show the requested and materialized Domotic revisions
     deps: [bootstrap]
     cmds:
-      - echo "Pinned revision {{.DOMOTIC_REF}}"
+      - echo "Requested revision {{.DOMOTIC_REQUESTED_REF}}"
       - git -C "{{.DOMOTIC_SOURCE_DIR}}" log -1 --oneline

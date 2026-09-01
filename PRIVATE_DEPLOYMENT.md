@@ -22,18 +22,16 @@ Choose a directory for the private repository and run:
 mkdir home-deployment
 cd home-deployment
 
-DOMOTIC_REF="$(git ls-remote https://github.com/fiam/domotic.git \
-  refs/heads/main | awk '{print $1}')"
-
 task --taskfile \
-  "https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref=${DOMOTIC_REF}" \
-  init DOMOTIC_REF="$DOMOTIC_REF"
+  'https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref=main' \
+  init
 ```
 
 Task asks you to approve the downloaded Taskfile the first time. Check that the
-URL points to `github.com/fiam/domotic`, then accept it. The generated
-`Taskfile.yml` records the exact Domotic version so a future upstream change
-cannot silently alter your installation.
+URL points to `github.com/fiam/domotic`, then accept it. Replace `main` with a
+tag, Git ref, or full commit when needed. The entrypoint resolves that value and
+records the exact commit in the generated `Taskfile.yml`, so a future upstream
+change cannot silently alter your installation.
 
 The generated layout is:
 
