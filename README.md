@@ -168,6 +168,9 @@ Run these from the private repository:
 | `task check` | Validate the code and private configuration. |
 | `task plan` | Preview Terraform changes. |
 | `task deploy` | Apply Terraform and deploy the Helm release. |
+| `task domotic:update REF=main` | Update the pinned Domotic code without deploying it. |
+| `task homeassistant:update` | Deploy the Home Assistant version verified by the Domotic pin. |
+| `task homeassistant:deploy` | Reapply Helm without running Terraform. |
 | `task status` | Show the release and workload status. |
 | `task keys:capture` | Refresh the portable Zigbee identity. |
 | `task backup` | Upload an encrypted recovery archive. |
@@ -211,17 +214,30 @@ Zigbee network.
 
 ## Upgrading
 
-Change `DOMOTIC_REF` in the private `Taskfile.yml`, then run:
+Update the private repository plumbing without changing the cluster:
 
 ```sh
+task domotic:update REF=main
+git diff -- Taskfile.yml
 task check
+```
+
+The task resolves `main` to an exact commit. A tag, full Git ref, or commit can
+be used instead. Commit the updated pin after reviewing it.
+
+Each Domotic revision declares one tested Home Assistant version. After
+updating Domotic and making both backups, deploy that image without running
+Terraform:
+
+```sh
 task backup
-task plan
-task deploy
+task homeassistant:update
 task status
 ```
 
-Home Assistant setup uses version-coupled APIs. Read
+Helm still reconciles the complete Domotic release, so any pending changes in
+`config/values.yaml` are also applied. Home Assistant setup uses
+version-coupled APIs; read
 [HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md) before
 changing the Home Assistant version.
 

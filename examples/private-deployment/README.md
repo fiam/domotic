@@ -44,6 +44,12 @@ Use `task secrets:edit` for later changes and `task deploy` to deploy. For a
 native Home Assistant backup import, run `task restore:plan` followed by `task
 restore`; those tasks do not require the Home Assistant admin password.
 
+Use `task domotic:update REF=main` to update the pinned Domotic code without
+deploying it. After reviewing that change and creating backups, `task
+homeassistant:update` deploys the Home Assistant version verified by the new
+pin without running Terraform. `task homeassistant:deploy` performs a Helm-only
+deployment without changing either version.
+
 Keep `config/infra/terraform.tfvars`, `config/values.yaml`, and the encrypted
 SOPS document under version control. Never commit `config/secrets.yaml`,
 `config/backup.env`, generated Terraform/Helm files, Zigbee keys, restored

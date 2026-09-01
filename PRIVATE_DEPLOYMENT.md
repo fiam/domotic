@@ -54,6 +54,8 @@ You will normally use these commands from the private repository:
 | Task | Purpose |
 | --- | --- |
 | `check`, `plan`, `deploy`, `status` | Validate and operate the normal deployment. |
+| `domotic:update` | Update the pinned Domotic source without deploying it. |
+| `homeassistant:update`, `homeassistant:deploy` | Update or redeploy Home Assistant without running Terraform. |
 | `restore:plan`, `restore` | Prepare a blank Home Assistant instance for a native backup import. |
 | `backup`, `backup:list`, `backup:restore` | Manage encrypted configuration-recovery archives. |
 | `k3s:context` | Import a server installed with the optional k3s guide. |
@@ -194,10 +196,19 @@ For an upstream upgrade:
 
 1. Run and verify both configuration and Home Assistant native backups.
 2. Review the target commit and `HOME_ASSISTANT_COMPATIBILITY.md`.
-3. Change the single `DOMOTIC_REF` in the private Taskfile.
-4. Run `task check`, `task plan`, `task deploy`, and `task status`.
-5. Commit the new pin only after Home Assistant, MQTT, Zigbee, routes, and R2
-   backups are healthy.
+3. Run `task domotic:update REF=main`. This updates `Taskfile.yml` and the local
+   source cache without changing the cluster. A tag, full Git ref, or commit
+   can be used instead of `main`.
+4. Review the pin and run `task check`.
+5. Run `task homeassistant:update` to select the Home Assistant version verified
+   by that Domotic revision and perform a Helm-only deployment.
+6. Run `task status` and commit the new pins only after Home Assistant, MQTT,
+   Zigbee, routes, and R2 backups are healthy.
+
+`task homeassistant:deploy` performs the same Helm-only reconciliation without
+changing the image pin. Neither Home Assistant task runs Terraform. Helm owns a
+single Domotic release, so pending changes in `config/values.yaml` are applied
+alongside the image update.
 
 Reverting `DOMOTIC_REF` rolls back code and charts. It does not reverse a Home
 Assistant database migration; use a native backup when application data must
