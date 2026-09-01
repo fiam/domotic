@@ -210,4 +210,26 @@ grep -Fq "SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'" \
 [[ "$(git -C "$initialized_root" symbolic-ref --short HEAD)" == main ]] ||
   fail "remote initialization did not create the expected main branch"
 
+git -C "$fixture_repository" \
+  -c user.name='Domotic Tests' \
+  -c user.email='tests@example.invalid' \
+  -c commit.gpgsign=false \
+  commit --quiet --allow-empty -m 'test: newer remote revision'
+updated_revision="$(git -C "$fixture_repository" rev-parse HEAD)"
+task --silent --taskfile "$repository_root/Taskfile.remote.yml" domotic:update \
+  PRIVATE_ROOT="$initialized_root" \
+  DOMOTIC_REPOSITORY="$fixture_repository"
+grep -Fq "DOMOTIC_REF: $updated_revision" "$initialized_root/Taskfile.yml" ||
+  fail "Domotic update did not pin the resolved revision"
+
+values_file="$initialized_root/config/values.yaml"
+"$repository_root/scripts/set-homeassistant-version.sh" \
+  "$values_file" "2099.12.7"
+grep -Fq '    tag: "2099.12.7"' "$values_file" ||
+  fail "Home Assistant update did not change the private image pin"
+if "$repository_root/scripts/set-homeassistant-version.sh" \
+  "$values_file" "stable" >/dev/null 2>&1; then
+  fail "Home Assistant update accepted a moving image tag"
+fi
+
 printf 'Private deployment helper tests passed.\n'

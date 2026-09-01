@@ -31,6 +31,13 @@ The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
 the image explicitly. Keep all four locations aligned.
 
+Private deployments may retain an older image in `config/values.yaml` while
+updating their Domotic source pin. `task homeassistant:update` copies the
+verified Home Assistant `appVersion` from that source into the private values
+file before running Helm. It deliberately does not accept an arbitrary image
+tag; a different version first requires this compatibility audit and a new
+Domotic revision.
+
 ## Private and version-coupled behavior
 
 The following behavior is not a supported declarative provisioning API. It may
