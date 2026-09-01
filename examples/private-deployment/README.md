@@ -1,30 +1,51 @@
 # Home deployment
 
-This private repository stores the non-secret desired state for one Domotic
-installation. Its Taskfile pins a reviewed revision of the public
-`fiam/domotic` repository and exposes that revision's deployment commands.
+This is the private deployment repository for your home. Edit the files under
+`config/` and run the Task commands here. The Domotic code is downloaded
+automatically at the version recorded in `Taskfile.yml`.
+
+Set `KUBE_CONTEXT` in `Taskfile.yml` to any Kubernetes context that meets the
+[Domotic cluster requirements](https://github.com/fiam/domotic#supported-kubernetes-environments).
+If the server was installed with the k3s guide, the optional
+`task k3s:context` command can import its kubeconfig.
+
+Configure SOPS with a master-key backend of your choice. Domotic does not
+create, locate, or back up that key; `sops` uses its normal configuration,
+environment variables, key files, agents, or KMS credentials.
+
+Create the encrypted credential document without committing its temporary
+plaintext input:
+
+```sh
+cp config/secrets.yaml.example config/secrets.yaml
+chmod 0600 config/secrets.yaml
+${EDITOR:-vi} config/secrets.yaml
+sops encrypt --filename-override config/secrets.sops.yaml \
+  < config/secrets.yaml > config/secrets.sops.yaml
+rm config/secrets.yaml
+git add config/secrets.sops.yaml
+```
+
+The encrypted document must contain `CLOUDFLARE_API_TOKEN` and
+`HOMEASSISTANT_ADMIN_PASSWORD`. Keep `config/secrets.sops.yaml` under version
+control and keep the SOPS master key elsewhere.
 
 Start with:
 
 ```sh
 task --list
-task k3s:context SSH_USER=your-server-user SSH_HOST=your-server.local
-task config:check
-task secrets:set
+kubectl --context=domotic get nodes
+task secrets:check
 task check
 task plan
 ```
 
-The two `*_REF` values in `Taskfile.yml` select credentials by URI scheme.
-The generated `keychain://` references use macOS Keychain; replace them with
-native `op://VAULT/ITEM/FIELD`, `env://VARIABLE`, or optional
-`sops://PATH#KEY` references when appropriate.
+Use `task secrets:edit` for later changes and `task deploy` to deploy. For a
+native Home Assistant backup import, run `task restore:plan` followed by `task
+restore`; those tasks do not require the Home Assistant admin password.
 
-Then deploy with `task deploy`. For a native Home Assistant backup import, run
-`task restore:plan` followed by `task restore` instead.
-
-Keep `config/infra/terraform.tfvars` and `config/values.yaml` under version
-control. Never commit `config/backup.env`, generated Terraform/Helm files,
-Zigbee keys, restored archives, or plaintext credentials. See the public
-repository's `PRIVATE_DEPLOYMENT.md` for credential references, backups,
-recovery, and upgrades.
+Keep `config/infra/terraform.tfvars`, `config/values.yaml`, and the encrypted
+SOPS document under version control. Never commit `config/secrets.yaml`,
+`config/backup.env`, generated Terraform/Helm files, Zigbee keys, restored
+archives, or plaintext credentials. See the public repository's
+`PRIVATE_DEPLOYMENT.md` for credentials, backups, recovery, and upgrades.

@@ -1,5 +1,10 @@
 # Install on a single-node k3s server
 
+This is the documented reference setup for a common home-server environment.
+Domotic itself supports any Kubernetes distribution that meets the
+[cluster requirements](README.md#supported-kubernetes-environments); use this
+guide only when choosing k3s.
+
 This guide prepares a new Debian or Ubuntu server for Domotic. It installs
 k3s, enables Traefik's Kubernetes Gateway API provider, configures remote
 cluster access, and advertises the application hostnames on the local network
@@ -281,8 +286,8 @@ Fill in `config/infra/terraform.tfvars`. If enabling R2, give the account API to
 **Workers R2 Storage Read** and **Write**, set `cloudflare_api_token_id`, and
 configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
 `config/values.yaml`, including the serial adapter and site details. Configure
-the two credential references in the private `Taskfile.yml`; do not add token
-or password assignments to the tracked Terraform variables.
+and commit the SOPS-encrypted `config/secrets.sops.yaml`; do not add token or
+password assignments to the tracked Terraform variables.
 
 The repository installs no custom Home Assistant integration by default. If
 this deployment needs one, declare its public immutable archive in
@@ -291,8 +296,8 @@ private Helm values. Follow [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md)
 for checksum, archive-path, upgrade, and removal requirements.
 
 For a new Home Assistant installation, keep
-`homeassistant_bootstrap_mode="seed"`. The remote task resolves the configured
-Home Assistant password reference and Terraform creates a Secret. A one-shot
+`homeassistant_bootstrap_mode="seed"`. The remote task decrypts the configured
+Home Assistant password with SOPS and Terraform creates a Secret. A one-shot
 Helm hook creates the first owner through Home Assistant's built-in but
 undocumented onboarding flow, completes the remaining steps, reconciles core
 and HTTP settings, and creates missing MQTT and R2 entries through their config
@@ -301,11 +306,11 @@ user, password, or integration entry.
 
 For a native Home Assistant backup recovery onto a blank volume, run `task
 restore:plan` followed by `task restore`. These targets temporarily select
-restore mode without editing the tracked seed setting or resolving an admin
+restore mode without editing the tracked seed setting or reading an admin
 password. Open Home Assistant, choose **Upload backup**, and use the credentials
 and emergency-kit key from the backed-up system. After the restore succeeds,
-make the configured password reference resolve to an existing restored owner
-before the next normal deployment.
+update the encrypted password to an existing restored owner before the next
+normal deployment.
 
 Use the following route attachment for k3s's packaged Traefik. Terraform
 supplies both route hostnames from `local_http_hostnames`, so do not repeat them

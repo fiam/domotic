@@ -1,3 +1,7 @@
+# These storage and Gateway values match the documented single-node k3s setup.
+# For another Kubernetes distribution, select its StorageClass and attach the
+# HTTPRoutes to its Gateway.
+
 zigbee2mqtt:
   image:
     tag: "2.13.0"

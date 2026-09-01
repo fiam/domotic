@@ -1,21 +1,22 @@
-# Private production deployments
+# Run Domotic from a private repository
 
-Use an independent private repository for a long-lived home installation. Do
-not place personal configuration on a branch of this public repository, and do
-not use a GitHub fork: a fork of a public repository remains public.
+Create a private Git repository for your home. Keep its hostnames, device
+settings, and encrypted credentials there; keep this public repository free of
+personal data. This also gives you a straightforward place to back up and
+review every configuration change.
 
-The private repository stores non-secret desired state and a pinned Domotic
-revision. Task downloads a commit-pinned remote `Taskfile.remote.yml`. Because
-remote Taskfiles do not expose a local repository directory, that Taskfile
-materializes the same pinned commit under the ignored `.domotic/source`
-directory before running Terraform, Helm, or repository scripts. The checkout
-is detached and its origin and commit are verified on every change.
+Do not use a GitHub fork for the private configuration. A fork of a public
+repository is public too. The setup below creates a small independent
+repository and downloads the Domotic code automatically when you run a task.
+
+Domotic can deploy to any Kubernetes distribution that meets the
+[cluster requirements](README.md#supported-kubernetes-environments). The k3s
+guide is a documented reference setup for home servers, not a platform
+requirement.
 
 ## 1. Create the private repository
 
-Create an empty directory wherever you normally keep projects and select the
-exact public commit to trust. The directory name is arbitrary. Review that
-commit before accepting Task's first remote-source prompt:
+Choose a directory for the private repository and run:
 
 ```sh
 mkdir home-deployment
@@ -29,20 +30,10 @@ task --taskfile \
   init DOMOTIC_REF="$DOMOTIC_REF"
 ```
 
-The generated `Taskfile.yml` records that full commit SHA. Commit the
-scaffold to a new, independent private repository:
-
-```sh
-git add .
-git commit -m "chore: initialize home deployment"
-git remote add origin <private-repository-url>
-git push -u origin main
-```
-
-Task automatically remembers an approved remote-file checksum and prompts if
-it changes. A full commit SHA prevents the selected Git content from moving.
-For unattended CI, inspect and add the remote Taskfile's explicit `checksum`
-to the include instead of accepting every remote source with `--yes`.
+Task asks you to approve the downloaded Taskfile the first time. Check that the
+URL points to `github.com/fiam/domotic`, then accept it. The generated
+`Taskfile.yml` records the exact Domotic version so a future upstream change
+cannot silently alter your installation.
 
 The generated layout is:
 
@@ -52,194 +43,98 @@ home-deployment/
 ├── README.md
 ├── config/
 │   ├── values.yaml
+│   ├── secrets.yaml.example
+│   ├── secrets.sops.yaml       # created by the operator and committed
 │   ├── backup.env.example
 │   └── infra/
 │       └── terraform.tfvars
-└── .domotic/                 # ignored materialized public source
+└── .domotic/                   # ignored materialized public source
 ```
 
-The remote entrypoint is the deployment's operator interface:
+You will normally use these commands from the private repository:
 
 | Task | Purpose |
 | --- | --- |
-| `bootstrap` | Materialize and verify the pinned public source checkout. |
 | `check`, `plan`, `deploy`, `status` | Validate and operate the normal deployment. |
 | `restore:plan`, `restore` | Prepare a blank Home Assistant instance for a native backup import. |
 | `backup`, `backup:list`, `backup:restore` | Manage encrypted configuration-recovery archives. |
-| `k3s:context` | Import the server into the default administrator kubeconfig. |
+| `k3s:context` | Import a server installed with the optional k3s guide. |
+| `secrets:edit`, `secrets:check` | Edit or verify the encrypted secrets file. |
 | `keys:capture` | Refresh the portable Zigbee identity after a successful apply. |
-| `version` | Show the requested and materialized public revisions. |
 
-Run `task --list` for the complete command surface. The `bootstrap` task treats
-`.domotic/source` as disposable: it verifies the origin and commit and removes
-non-ignored untracked changes before any delegated operation.
+Run `task --list` to see every command. Do not edit `.domotic/`; it is an
+ignored working directory managed by Task.
 
 Edit the two tracked configuration files. They may contain private hostnames,
 device paths, selected integrations, and other non-secret desired state. Do
 not add the Cloudflare token, Home Assistant password, Zigbee keys, generated
-Helm values, backup credentials, or restored archives.
+Helm values, backup credentials, or restored archives to those files.
 
-Run the boundary check before committing configuration:
+## 2. Encrypt credentials with SOPS
 
-```sh
-task config:check
-```
-
-It rejects known plaintext Terraform credentials in a tracked variables file,
-tracked generated/recovery files, and private runtime files with permissions
-broader than owner-only, non-executable access such as mode `0600`.
-
-## 2. Credential reference formats
-
-Terraform needs two credentials during a normal seed-mode deployment:
-
-- `cloudflare_api_token`
-- `homeassistant_admin_password`
-
-The private Taskfile configures a reference for each value. The URI scheme
-selects the resolver automatically, so the two credentials may come from
-different password managers. The wrapper resolves them immediately before
-Terraform starts and passes them as `TF_VAR_cloudflare_api_token` and a JSON
-`TF_VAR_homeassistant_onboarding` value. It never writes or prints either
-value. Terraform still stores sensitive resource inputs in its protected
-Kubernetes backend, so cluster access and the encrypted recovery archive
-remain security boundaries.
-
-### macOS Keychain (default)
-
-The generated references use macOS Keychain generic-password items:
+A new Home Assistant installation needs these two values:
 
 ```yaml
-CLOUDFLARE_API_TOKEN_REF: keychain://domotic/cloudflare-api-token
-HOMEASSISTANT_ADMIN_PASSWORD_REF: keychain://domotic/homeassistant-admin-password
+CLOUDFLARE_API_TOKEN: your-account-api-token
+HOMEASSISTANT_ADMIN_PASSWORD: your-initial-owner-password
 ```
 
-The URI carries the Keychain account and service; there is no separate
-provider or profile setting. Save both values interactively:
+Domotic uses SOPS for credentials but does not manage the key. Set up SOPS in
+the way you prefer: a local age or PGP key, a cloud KMS, or another backend
+supported by SOPS. If you use age, its default key file and the
+`SOPS_AGE_KEY_FILE`, `SOPS_AGE_KEY`, and `SOPS_AGE_KEY_CMD` settings all work.
+
+Configure a SOPS creation rule matching `config/secrets.sops.yaml`, or pass the
+recipient option for your chosen backend to `sops encrypt`. Then create and
+immediately remove the ignored plaintext input:
 
 ```sh
-task secrets:set
+cp config/secrets.yaml.example config/secrets.yaml
+chmod 0600 config/secrets.yaml
+${EDITOR:-vi} config/secrets.yaml
+sops encrypt --filename-override config/secrets.sops.yaml \
+  < config/secrets.yaml > config/secrets.sops.yaml
+rm config/secrets.yaml
+
+git add config/secrets.sops.yaml
 task secrets:check
 ```
 
-The built-in resolver uses `/usr/bin/security` with the account and service
-encoded in each reference. macOS may ask whether the process can access each
-Keychain item. Do not select an option that grants every application access.
+If encryption reports that no creation key is configured, finish your SOPS
+setup and try again. Use `task secrets:edit` for later changes. Deployment tasks
+decrypt the file only while Terraform is running and do not create a plaintext
+copy.
 
-Apple does not document a command-line integration for the Passwords app.
-Keychain Services is the native scriptable credential store; generic entries
-created here are managed by Keychain and are not guaranteed to appear as
-ordinary website entries in Passwords.
+Keep a recoverable copy of the SOPS key outside this repository. Anyone with
+administrator access to the Kubernetes cluster can also reach secrets derived
+from these credentials, so protect cluster access and recovery backups too.
 
-To remove an entry explicitly:
-
-```sh
-.domotic/source/scripts/secret-reference.sh delete \
-  keychain://domotic/cloudflare-api-token
-```
-
-If only one of the two references uses Keychain, manage it directly with the
-same `set` command. `task secrets:set` intentionally requires both references
-to use Keychain so it cannot partially update a mixed configuration.
-
-### 1Password
-
-Use 1Password's native `op://VAULT/ITEM/FIELD` references:
-
-```yaml
-CLOUDFLARE_API_TOKEN_REF: op://Infrastructure/Cloudflare/credential
-HOMEASSISTANT_ADMIN_PASSWORD_REF: op://Infrastructure/HomeAssistant/password
-```
-
-The built-in resolver detects the scheme and executes `op read` with the
-complete reference. Authenticate the 1Password CLI using its normal desktop,
-service-account, or CI workflow, then run `task secrets:check`. Create and
-update these items with 1Password rather than `task secrets:set`.
-
-### Environment references
-
-For CI, point each reference at a variable injected by the CI secret store:
-
-```yaml
-CLOUDFLARE_API_TOKEN_REF: env://DOMOTIC_CLOUDFLARE_API_TOKEN
-HOMEASSISTANT_ADMIN_PASSWORD_REF: env://DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD
-```
-
-Avoid typing secret assignments into interactive shell history.
-
-### Custom resolver
-
-Set `SECRET_RESOLVER` to an executable path to add other schemes such as a
-hardware-backed store. The executable receives `get <reference>` and must print
-only the requested value to standard output. `set <reference>` and
-`delete <reference>` are optional operations used only for interactive secret
-management.
+Run the repository boundary checks before committing configuration:
 
 ```sh
-#!/bin/sh
-set -eu
-test "$1" = get
-case "$2" in
-  vault://cloudflare) exec my-vault read cloudflare-token ;;
-  vault://homeassistant) exec my-vault read homeassistant-password ;;
-  *) exit 1 ;;
-esac
+task config:check
+task check
 ```
 
-Keep the resolver in the private repository, mark it executable, and configure
-it relative to that repository without a machine-specific path:
+These checks catch common mistakes such as committing plaintext credentials,
+generated secret files, or private files with unsafe permissions.
 
-```yaml
-SECRET_RESOLVER: '{{.ROOT_DIR}}/scripts/secret-resolver'
-```
-
-The resolver contains references and commands, never credentials.
-
-### Optional SOPS
-
-SOPS is not required when a password manager is the source of truth. Use it
-only when encrypted, versioned secret files are useful for multiple operators
-or CI.
-
-The built-in `sops://PATH#KEY` scheme reads a top-level string from an
-encrypted document. Relative paths resolve from the private repository root:
-
-```yaml
-CLOUDFLARE_API_TOKEN_REF: sops://config/secrets.sops.yaml#cloudflare_api_token
-HOMEASSISTANT_ADMIN_PASSWORD_REF: sops://config/secrets.sops.yaml#homeassistant_admin_password
-```
-
-SOPS can find an age identity through its normal environment or key-file
-locations. Alternatively, reference the one-line age secret identity through
-another supported scheme:
-
-```yaml
-SOPS_AGE_KEY_REF: keychain://domotic/sops-age-key
-```
-
-Store that Keychain value with:
+Commit the configured scaffold to a new, independent private repository:
 
 ```sh
-.domotic/source/scripts/secret-reference.sh set \
-  keychain://domotic/sops-age-key
+git add .
+git commit -m "chore: configure home deployment"
+git remote add origin <private-repository-url>
+git push -u origin main
 ```
-
-The wrapper retrieves it only while SOPS decrypts the deployment values.
-Commit only the encrypted
-`secrets.sops.yaml`; preserve the age identity independently.
-
-This SOPS identity and the age identity configured in `backup.env` serve
-different roles. They may use the same key for a small single-user setup, but
-the recovery identity must always have an independent password-manager or
-offline copy.
 
 ## 3. Plan and deploy
 
 Validate code, configuration, and credentials before the first plan:
 
 ```sh
-task check
 task secrets:check
+task check
 task plan
 ```
 
@@ -251,19 +146,19 @@ task deploy
 task status
 ```
 
-For a native Home Assistant backup recovery, prepare the blank installation
-without changing the tracked seed configuration or requesting an owner
-password:
+To recover a native Home Assistant backup, prepare the blank installation
+without changing that setting or requiring the initial owner password:
 
 ```sh
 task restore:plan
 task restore
 ```
 
-Open Home Assistant, upload and restore the native backup, and then store the
-credentials of an owner from that backup in the configured reference. The next ordinary
-`task deploy` returns to the tracked seed mode; it finds the existing owner and
-uses those credentials to reconcile the chart-derived settings.
+The restore tasks still need `CLOUDFLARE_API_TOKEN`, but they do not require or
+inject `HOMEASSISTANT_ADMIN_PASSWORD`. Open Home Assistant, upload and restore
+the native backup, and then put the credentials of an owner from that backup
+into the encrypted file before the next `task deploy`. The deployment finds
+the restored owner and uses that account to finish configuring the installation.
 
 ## 4. Back up the installation
 
@@ -277,10 +172,16 @@ task backup
 task backup:list
 ```
 
-`CONFIG_DIR` makes the backup script archive the private `values.yaml`,
-Terraform variables, generated Helm values, portable Zigbee identity, live
-Kubernetes secrets, and Terraform state. Home Assistant's native R2 backup
-separately preserves its database and application state.
+`task backup` uploads an encrypted recovery archive containing the deployment
+configuration, Zigbee identity, live Kubernetes secrets, and Terraform state.
+The private Git repository already preserves the SOPS-encrypted credential
+document. Home Assistant's native R2 backup separately preserves its database
+and application state.
+
+The SOPS master key and the age identity configured in `backup.env` have
+different roles. They may be the same key in a small single-user setup, but
+that key still needs a recoverable copy outside the private repository and the
+R2 bucket it protects.
 
 ## 5. Maintain and upgrade
 
@@ -304,16 +205,13 @@ Reverting `DOMOTIC_REF` rolls back code and charts. It does not reverse a Home
 Assistant database migration; use a native backup when application data must
 also be restored.
 
-The `.domotic/source` checkout and Task's remote-file cache allow normal tasks
-to keep running offline after they have been materialized. An upgrade requires
-network access to retrieve the newly pinned commit.
+Task keeps the selected Domotic source in `.domotic/source`. You can delete that
+directory if its cache becomes damaged; the next task downloads the pinned
+version again. An upgrade needs network access to download the new version.
 
 Official references:
 
 - [Task remote Taskfiles](https://taskfile.dev/docs/remote-taskfiles)
 - [GitHub fork visibility](https://docs.github.com/en/pull-requests/reference/forks)
 - [Terraform sensitive inputs](https://developer.hashicorp.com/terraform/tutorials/configuration-language/sensitive-variables)
-- [1Password secret-reference syntax](https://www.1password.dev/cli/secret-reference-syntax/)
 - [SOPS](https://getsops.io/docs/)
-- [Apple Passwords](https://support.apple.com/guide/passwords/the-passwords-app-mchl901b1b95/mac)
-- [Apple Keychain Access](https://support.apple.com/guide/keychain-access/welcome/mac)
