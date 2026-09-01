@@ -14,8 +14,8 @@ or destroying a local development cluster, read and follow
 its own Terraform backend; deleting it without first destroying the external
 test infrastructure or preserving that state can orphan Cloudflare resources.
 
-Before changing external configuration paths, secret providers, recovery
-commands, or the remote Taskfile, read and follow
+Before changing external configuration paths, the SOPS credential boundary,
+recovery commands, or the remote Taskfile, read and follow
 [PRIVATE_DEPLOYMENT.md](PRIVATE_DEPLOYMENT.md). Keep the remote Taskfile
 self-contained: Task downloads it without exposing the source repository.
 

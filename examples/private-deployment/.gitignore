@@ -10,5 +10,5 @@
 /config/infra/zigbee-keys.tfvars.json
 /config/restore/
 
-# Optional plaintext created while migrating to an encrypted file.
+# Temporary plaintext input used only while creating the SOPS document.
 /config/secrets.yaml

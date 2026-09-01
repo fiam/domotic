@@ -24,8 +24,10 @@ values_file="${3:-}"
 terraform_keys_file="${4:-}"
 helm_values_file="${5:-}"
 backup_env_file="${6:-}"
+secrets_file="${7:-}"
 
 [[ -n "$config_dir" ]] || fail "missing configuration directory"
+[[ -n "$secrets_file" ]] || fail "missing SOPS secrets file path"
 [[ -d "$config_dir" ]] || fail "configuration directory does not exist: $config_dir"
 config_dir="$(cd "$config_dir" && pwd -P)"
 terraform_vars_file="$(canonical_path "$terraform_vars_file")"
@@ -33,8 +35,10 @@ values_file="$(canonical_path "$values_file")"
 terraform_keys_file="$(canonical_path "$terraform_keys_file")"
 helm_values_file="$(canonical_path "$helm_values_file")"
 backup_env_file="$(canonical_path "$backup_env_file")"
+secrets_file="$(canonical_path "$secrets_file")"
 [[ -f "$terraform_vars_file" ]] || fail "missing Terraform variables file: $terraform_vars_file"
 [[ -f "$values_file" ]] || fail "missing Helm values file: $values_file"
+[[ -f "$secrets_file" ]] || fail "missing SOPS secrets file: $secrets_file"
 
 git_root="$(git -C "$config_dir" rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$git_root" ]] || fail "configuration directory must be inside a Git repository"
@@ -65,8 +69,19 @@ check_private_file() {
 
 if tracked_path "$terraform_vars_file" &&
   grep -E -q '^[[:space:]]*(cloudflare_api_token|homeassistant_onboarding)([[:space:]]|=|$)' "$terraform_vars_file"; then
-  fail "tracked Terraform variables must obtain Cloudflare and Home Assistant credentials from a secret provider"
+  fail "tracked Terraform variables must obtain Cloudflare and Home Assistant credentials from SOPS"
 fi
+
+tracked_path "$secrets_file" || fail "the encrypted SOPS secrets file must be tracked in Git: $secrets_file"
+grep -Eq '^CLOUDFLARE_API_TOKEN:[[:space:]]+ENC\[' "$secrets_file" ||
+  fail "CLOUDFLARE_API_TOKEN must be encrypted in the SOPS secrets file"
+if grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:' "$secrets_file"; then
+  grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:[[:space:]]+ENC\[' "$secrets_file" ||
+    fail "HOMEASSISTANT_ADMIN_PASSWORD must be encrypted in the SOPS secrets file"
+fi
+grep -Eq '^sops:' "$secrets_file" || fail "SOPS metadata is missing from the encrypted secrets file"
+
+check_private_file "$config_dir/secrets.yaml" "plaintext SOPS input file"
 
 check_private_file "$terraform_keys_file" "Zigbee identity file"
 check_private_file "$helm_values_file" "generated Helm values"

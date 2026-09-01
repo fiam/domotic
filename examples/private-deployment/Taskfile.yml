@@ -13,13 +13,7 @@ includes:
       DOMOTIC_REF: '{{.DOMOTIC_REF}}'
       PRIVATE_ROOT: '{{.ROOT_DIR}}'
       CONFIG_DIR: '{{.ROOT_DIR}}/config'
-      # The scheme selects the resolver. See README.md for keychain://, op://,
-      # env://, and optional sops:// examples.
-      CLOUDFLARE_API_TOKEN_REF: 'keychain://domotic/cloudflare-api-token'
-      HOMEASSISTANT_ADMIN_PASSWORD_REF: 'keychain://domotic/homeassistant-admin-password'
-      # SOPS_AGE_KEY_REF: 'keychain://domotic/sops-age-key'
-      # SECRET_RESOLVER: '{{.ROOT_DIR}}/scripts/custom-secret-resolver'
-      WITH_HOMEASSISTANT_ADMIN: 'true'
+      SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'
       KUBE_CONTEXT: domotic
       STATE_NAMESPACE: terraform-state
       RELEASE_NAME: domotic

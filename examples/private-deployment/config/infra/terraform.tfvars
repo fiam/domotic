@@ -1,4 +1,4 @@
-# Credentials do not belong in this file. The selected secret references inject
+# Credentials do not belong in this file. The SOPS deployment wrapper injects
 # TF_VAR_cloudflare_api_token and TF_VAR_homeassistant_onboarding only while a
 # Terraform command is running.
 

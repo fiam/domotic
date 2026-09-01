@@ -20,6 +20,7 @@ vars:
   TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default .HELM_VALUES_FILE}}'
   VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
   BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE | default (printf "%s/backup.env" .RESOLVED_CONFIG_DIR)}}'
+  SECRETS_FILE: '{{.SECRETS_FILE | default (printf "%s/secrets.sops.yaml" .RESOLVED_CONFIG_DIR)}}'
 
 env:
   CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
@@ -56,7 +57,7 @@ tasks:
         ./scripts/config-check.sh "{{.RESOLVED_CONFIG_DIR}}"
         "{{.TF_VARS_FILE}}" "{{.VALUES_FILE}}"
         "{{.TF_KEYS_FILE}}" "{{.HELM_VALUES_FILE}}"
-        "{{.BACKUP_ENV_FILE}}"
+        "{{.BACKUP_ENV_FILE}}" "{{.SECRETS_FILE}}"
 
   deploy:
     desc: Apply infrastructure and deploy the chart

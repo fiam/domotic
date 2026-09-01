@@ -17,19 +17,9 @@ vars:
   NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
   SSH_USER: '{{.SSH_USER | default ""}}'
   SSH_HOST: '{{.SSH_HOST | default ""}}'
-  SECRET_RESOLVER: '{{.SECRET_RESOLVER | default ""}}'
-  CLOUDFLARE_API_TOKEN_REF: '{{.CLOUDFLARE_API_TOKEN_REF | default ""}}'
-  HOMEASSISTANT_ADMIN_PASSWORD_REF: '{{.HOMEASSISTANT_ADMIN_PASSWORD_REF | default ""}}'
-  SOPS_AGE_KEY_REF: '{{.SOPS_AGE_KEY_REF | default ""}}'
-  WITH_HOMEASSISTANT_ADMIN: '{{.WITH_HOMEASSISTANT_ADMIN | default "true"}}'
+  SECRETS_FILE: '{{.SECRETS_FILE | default (printf "%s/secrets.sops.yaml" .CONFIG_DIR)}}'
 
 env:
-  DOMOTIC_SECRET_RESOLVER: '{{.SECRET_RESOLVER}}'
-  DOMOTIC_SECRET_BASE_DIR: '{{.PRIVATE_ROOT}}'
-  DOMOTIC_CLOUDFLARE_API_TOKEN_REF: '{{.CLOUDFLARE_API_TOKEN_REF}}'
-  DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF: '{{.HOMEASSISTANT_ADMIN_PASSWORD_REF}}'
-  DOMOTIC_SOPS_AGE_KEY_REF: '{{.SOPS_AGE_KEY_REF}}'
-  DOMOTIC_WITH_HOMEASSISTANT_ADMIN: '{{.WITH_HOMEASSISTANT_ADMIN}}'
   DOMOTIC_SSH_USER: '{{.SSH_USER}}'
   DOMOTIC_SSH_HOST: '{{.SSH_HOST}}'
 
@@ -119,7 +109,7 @@ tasks:
           git -C "$private_root" init -b main
         fi
         printf 'Private deployment scaffold created in %s.\n' "$private_root"
-        printf 'Edit config/, store credentials, then run task check and task plan.\n'
+        printf 'Edit config/, encrypt the SOPS credentials, then run task check and task plan.\n'
 
   config:check:
     desc: Validate private configuration and Git secret boundaries
@@ -128,6 +118,7 @@ tasks:
       - >-
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" config:check
         CONFIG_DIR="{{.CONFIG_DIR}}"
+        SECRETS_FILE="{{.SECRETS_FILE}}"
 
   k3s:context:
     desc: Import the k3s server into the default kubeconfig
@@ -149,34 +140,31 @@ tasks:
       - task: config:check
 
   secrets:check:
-    desc: Confirm that the configured references resolve deployment secrets
+    desc: Confirm that SOPS can decrypt the deployment secrets
     deps: [bootstrap]
     cmds:
-      - "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh --check"
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        check "{{.SECRETS_FILE}}"
 
-  secrets:set:
-    desc: Prompt for deployment secrets referenced through macOS Keychain
+  secrets:edit:
+    desc: Edit the encrypted deployment secrets with SOPS
     deps: [bootstrap]
     preconditions:
-      - sh: >-
-          case "$DOMOTIC_CLOUDFLARE_API_TOKEN_REF" in keychain://*) true;; *) false;; esac &&
-          case "$DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF" in keychain://*) true;; *) false;; esac
-        msg: secrets:set requires keychain:// references for both deployment credentials.
+      - sh: command -v sops >/dev/null 2>&1
+        msg: sops is required to edit deployment secrets.
+      - sh: test -f "{{.SECRETS_FILE}}"
+        msg: Create and encrypt config/secrets.sops.yaml first.
     cmds:
-      - |
-        resolver="$DOMOTIC_SECRET_RESOLVER"
-        if test -z "$resolver"; then
-          resolver="{{.DOMOTIC_SOURCE_DIR}}/scripts/secret-reference.sh"
-        fi
-        "$resolver" set "$DOMOTIC_CLOUDFLARE_API_TOKEN_REF"
-        "$resolver" set "$DOMOTIC_HOMEASSISTANT_ADMIN_PASSWORD_REF"
+      - sops "{{.SECRETS_FILE}}"
 
   plan:
-    desc: Plan the private deployment with resolved credentials
+    desc: Plan the private deployment with SOPS credentials
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        seed "{{.SECRETS_FILE}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" infra:plan
         CONFIG_DIR="{{.CONFIG_DIR}}"
         KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
@@ -188,7 +176,8 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        seed "{{.SECRETS_FILE}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" deploy
         CONFIG_DIR="{{.CONFIG_DIR}}"
         KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
@@ -203,7 +192,7 @@ tasks:
     cmds:
       - >-
         "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        --without-homeassistant-admin --
+        cloudflare "{{.SECRETS_FILE}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore
         CONFIG_DIR="{{.CONFIG_DIR}}"
         KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
@@ -218,7 +207,7 @@ tasks:
     cmds:
       - >-
         "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        --without-homeassistant-admin --
+        cloudflare "{{.SECRETS_FILE}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:plan
         CONFIG_DIR="{{.CONFIG_DIR}}"
         KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
@@ -282,7 +271,8 @@ tasks:
     prompt: This removes the private deployment. Continue?
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
+        cloudflare "{{.SECRETS_FILE}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" destroy
         CONFIG_DIR="{{.CONFIG_DIR}}"
         KUBE_CONFIG_PATH="{{.KUBE_CONFIG_PATH}}"
