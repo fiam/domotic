@@ -151,14 +151,22 @@ mv "$config_dir/secrets.sops.yaml.bak" "$config_dir/secrets.sops.yaml"
 # committed without copying unrelated untracked workspace files.
 fixture_repository="$temp_root/source-repository"
 git clone --quiet "$repository_root" "$fixture_repository"
-git -C "$repository_root" diff --binary HEAD -- \
+if ! git -C "$repository_root" diff --quiet HEAD -- \
   Taskfile.yml \
   Taskfile.remote.yml \
   examples/private-deployment \
   scripts/config-check.sh \
   scripts/tests/private-deployment.sh \
-  scripts/with-deployment-secrets.sh |
-  git -C "$fixture_repository" apply -
+  scripts/with-deployment-secrets.sh; then
+  git -C "$repository_root" diff --binary HEAD -- \
+    Taskfile.yml \
+    Taskfile.remote.yml \
+    examples/private-deployment \
+    scripts/config-check.sh \
+    scripts/tests/private-deployment.sh \
+    scripts/with-deployment-secrets.sh |
+    git -C "$fixture_repository" apply -
+fi
 if ! git -C "$fixture_repository" ls-files --error-unmatch \
   examples/private-deployment/config/secrets.yaml.example >/dev/null 2>&1; then
   cp "$repository_root/examples/private-deployment/config/secrets.yaml.example" \
