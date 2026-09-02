@@ -183,6 +183,21 @@ fi
 source_cache="$temp_root/remote/.domotic/source"
 revision="$(git -C "$fixture_repository" rev-parse HEAD)"
 git -C "$fixture_repository" branch test-release "$revision"
+
+equivalent_taskfile="$temp_root/Taskfile.remote.yml?ref=$revision"
+equivalent_source_cache="$temp_root/equivalent/.domotic/source"
+cp "$repository_root/Taskfile.remote.yml" "$equivalent_taskfile"
+git clone --quiet "$fixture_repository" "$equivalent_source_cache"
+git -C "$equivalent_source_cache" remote set-url origin \
+  git@github.com:fiam/domotic.git
+task --silent --taskfile "$equivalent_taskfile" bootstrap \
+  PRIVATE_ROOT="$temp_root/equivalent" \
+  DOMOTIC_SOURCE_DIR="$equivalent_source_cache" \
+  DOMOTIC_REPOSITORY=https://github.com/fiam/domotic.git
+[[ "$(git -C "$equivalent_source_cache" config --local --get remote.origin.url)" == \
+  https://github.com/fiam/domotic.git ]] ||
+  fail "remote Taskfile did not normalize an equivalent GitHub origin"
+
 task --silent --taskfile "$repository_root/Taskfile.remote.yml" bootstrap \
   PRIVATE_ROOT="$temp_root/remote" \
   DOMOTIC_SOURCE_DIR="$source_cache" \
