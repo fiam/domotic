@@ -151,7 +151,7 @@ and Terraform state inside the separate age-encrypted archive. You can also
 copy it directly into a password manager:
 
 ```sh
-kubectl --context=domotic -n domotic \
+kubectl -n domotic \
   get secret homeassistant-backup-encryption \
   -o go-template='{{index .data "password" | base64decode}}{{"\n"}}'
 ```
@@ -204,10 +204,10 @@ materialized checkout.
 You can read the generated credential values from the Kubernetes Secret:
 
 ```bash
-kubectl --context=domotic -n domotic get secret homeassistant-r2-credentials \
+kubectl -n domotic get secret homeassistant-r2-credentials \
   -o jsonpath='{.data.access_key_id}' | base64 --decode
 printf '\n'
-kubectl --context=domotic -n domotic get secret homeassistant-r2-credentials \
+kubectl -n domotic get secret homeassistant-r2-credentials \
   -o jsonpath='{.data.secret_access_key}' | base64 --decode
 printf '\n'
 ```

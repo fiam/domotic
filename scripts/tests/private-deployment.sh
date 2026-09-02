@@ -17,6 +17,13 @@ fail() {
   exit 1
 }
 
+if grep -Eq 'KUBE_CONTEXT.*default "[^"]+"' \
+  "$repository_root/Taskfile.remote.yml" \
+  "$repository_root/infra/Taskfile.yml" \
+  "$repository_root/charts/domotic/Taskfile.yml"; then
+  fail "a production Taskfile selects a default Kubernetes context"
+fi
+
 install -d -m 0700 "$temp_root/bin"
 fake_secrets_file="$temp_root/secrets.sops.yaml"
 fake_age_key_file="$temp_root/age-identity.txt"
@@ -203,6 +210,9 @@ grep -Fq "DOMOTIC_REF: $revision" "$initialized_root/Taskfile.yml" ||
 grep -Fq "SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'" \
   "$initialized_root/Taskfile.yml" ||
   fail "remote initialization did not configure the SOPS secrets document"
+if grep -q 'KUBE_CONTEXT' "$initialized_root/Taskfile.yml"; then
+  fail "remote initialization pinned a Kubernetes context"
+fi
 [[ -f "$initialized_root/config/secrets.yaml.example" ]] ||
   fail "remote initialization did not copy the SOPS plaintext template"
 [[ -f "$initialized_root/config/infra/terraform.tfvars" ]] ||

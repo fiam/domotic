@@ -137,8 +137,8 @@ The k3s admin kubeconfig grants unrestricted cluster access. Copy it only to a
 trusted administrator machine and keep it private. After initializing the
 private deployment repository in
 [the README](README.md#2-create-a-private-deployment-repository), run this from
-that repository to merge the server configuration into the default kubeconfig
-under the distinct name `domotic`:
+that repository to merge the server configuration into your kubeconfig under
+the distinct name `domotic`:
 
 ```sh
 task k3s:context \
@@ -146,18 +146,20 @@ task k3s:context \
   SSH_HOST=domotic-server.local
 
 kubectl config get-contexts
-kubectl --context=domotic get nodes
+kubectl config use-context domotic
+kubectl get nodes
 ```
 
 Replace `your-server-user` with the account used to SSH into the server. The
 task materializes the pinned public source and the import script allocates a
 terminal so `sudo` can request that account's password. It
 backs up an existing configuration, avoids collisions with k3s's generic
-`default` names, and preserves the current context. Use
-`kubectl config use-context domotic` to make the imported context current, or
-keep using `--context=domotic` per command. The merged kubeconfig contains
-embedded client certificates. Run the script again after k3s rotates or renews
-them.
+`default` names, and preserves the current context until you explicitly switch
+to `domotic`. Deployment tasks use the current context. The merged kubeconfig
+contains embedded client certificates. Run the script again after k3s rotates
+or renews them. The helper writes to `KUBECONFIG` when it names one file and
+otherwise uses `~/.kube/config`; deployment commands support the normal
+multi-file `KUBECONFIG` form.
 
 ## 5. Advertise the application names with Avahi
 
@@ -281,7 +283,7 @@ avahi-resolve-host-name -4 zigbee2mqtt.local
 ## 6. Attach the application routes to Traefik
 
 On the administrator machine, continue from
-[the private deployment workflow](README.md#5-configure-validate-and-deploy).
+[the private deployment workflow](README.md#4-configure-validate-and-deploy).
 Fill in `config/infra/terraform.tfvars`. If enabling R2, give the account API token
 **Workers R2 Storage Read** and **Write**, set `cloudflare_api_token_id`, and
 configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
@@ -352,8 +354,8 @@ automatically.
 Verify that Traefik accepted the routes:
 
 ```sh
-kubectl --context=domotic -n domotic get httproute
-kubectl --context=domotic -n domotic describe httproute
+kubectl -n domotic get httproute
+kubectl -n domotic describe httproute
 curl --fail --show-error --head http://homeassistant.local
 curl --fail --show-error --head http://zigbee2mqtt.local
 ```

@@ -85,11 +85,20 @@ make_backup() {
   local terraform_keys_path
   local helm_values_path
   local values_path
+  local kube_context
+  local -a kubectl_context_args=()
 
   terraform_vars_path="$(resolve_config_path "${TF_VARS_FILE:-infra/terraform.tfvars}" "$repository_root/infra")"
   terraform_keys_path="$(resolve_config_path "${TF_KEYS_FILE:-infra/zigbee-keys.tfvars.json}" "$repository_root/infra")"
   helm_values_path="$(resolve_config_path "${HELM_VALUES_FILE:-infra/helm-values.yaml}" "$repository_root/infra")"
   values_path="$(resolve_config_path "${VALUES_FILE:-values.yaml}" "$repository_root")"
+
+  if [[ -n "${KUBE_CTX:-}" ]]; then
+    kube_context="$KUBE_CTX"
+    kubectl_context_args=(--context "$KUBE_CTX")
+  else
+    kube_context="$(kubectl config current-context)"
+  fi
 
   [[ -f "$terraform_vars_path" ]] ||
     fail "missing Terraform variables file: $terraform_vars_path"
@@ -133,51 +142,33 @@ make_backup() {
 
   terraform -chdir="$repository_root/infra" state pull > "$payload_dir/infra/terraform.tfstate"
 
-  kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret zigbee-keys -o json > "$payload_dir/kubernetes/zigbee-keys.json"
-  kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get configmap zigbee-network -o json > "$payload_dir/kubernetes/zigbee-network.json"
-  kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret cloudflared-tunnel-token -o json > "$payload_dir/kubernetes/cloudflared-tunnel-token.json"
-  if kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  if kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret homeassistant-r2-credentials >/dev/null 2>&1; then
-    kubectl \
-      --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-      --context "${KUBE_CTX:-domotic}" \
+    kubectl "${kubectl_context_args[@]}" \
       --namespace "$app_namespace" \
       get secret homeassistant-r2-credentials -o json > "$payload_dir/kubernetes/homeassistant-r2-credentials.json"
   fi
-  if kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  if kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret homeassistant-backup-encryption >/dev/null 2>&1; then
-    kubectl \
-      --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-      --context "${KUBE_CTX:-domotic}" \
+    kubectl "${kubectl_context_args[@]}" \
       --namespace "$app_namespace" \
       get secret homeassistant-backup-encryption -o json > "$payload_dir/kubernetes/homeassistant-backup-encryption.json"
   fi
-  if kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  if kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret homeassistant-onboarding >/dev/null 2>&1; then
-    kubectl \
-      --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-      --context "${KUBE_CTX:-domotic}" \
+    kubectl "${kubectl_context_args[@]}" \
       --namespace "$app_namespace" \
       get secret homeassistant-onboarding -o json > "$payload_dir/kubernetes/homeassistant-onboarding.json"
   fi
@@ -185,7 +176,7 @@ make_backup() {
   printf '%s\n' \
     "created_at=$timestamp" \
     "git_revision=$git_revision" \
-    "kube_context=${KUBE_CTX:-domotic}" \
+    "kube_context=$kube_context" \
     "kubernetes_namespace=$app_namespace" > "$payload_dir/MANIFEST"
 
   tar -C "$payload_dir" -czf "$archive_path" .

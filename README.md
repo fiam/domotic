@@ -55,29 +55,7 @@ repository URL before accepting it. `main` can be replaced with a tag, Git ref,
 or full commit. The entrypoint resolves it and records the exact commit in the
 generated `Taskfile.yml`.
 
-### 3. Connect a Kubernetes cluster
-
-Set `KUBE_CONTEXT` in the generated `Taskfile.yml` to an existing kubeconfig
-context, then check the connection:
-
-```sh
-kubectl --context=your-context get nodes
-```
-
-If you are starting with a new home server, follow the [k3s guide](DEPLOYMENT.md).
-It includes an optional helper for importing the server's kubeconfig:
-
-```sh
-task k3s:context \
-  SSH_USER=your-server-user \
-  SSH_HOST=your-server-hostname.local
-```
-
-For another Kubernetes distribution, use its normal kubeconfig setup. Update
-`config/values.yaml` with that cluster's StorageClass and Gateway reference;
-the generated defaults match the documented k3s setup.
-
-### 4. Encrypt the deployment credentials
+### 3. Encrypt the deployment credentials
 
 Configure SOPS with the key backend of your choice, then create the encrypted
 secrets file:
@@ -104,7 +82,14 @@ HOMEASSISTANT_ADMIN_PASSWORD: your-initial-owner-password
 Domotic does not manage the SOPS key. Standard age, PGP, and KMS setups all
 work. Use `task secrets:edit` when the encrypted values need to change.
 
-### 5. Configure, validate, and deploy
+### 4. Configure, validate, and deploy
+
+Deployment commands use the current kubeconfig context and honor `KUBECONFIG`.
+Check the target before planning or deploying:
+
+```sh
+kubectl config current-context
+```
 
 Edit:
 

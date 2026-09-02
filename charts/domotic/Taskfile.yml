@@ -5,7 +5,7 @@ vars:
   RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
   RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
   NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
-  HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
+  HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
   TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
   VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
   HELM_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
@@ -30,7 +30,7 @@ tasks:
         helm upgrade --install "{{.RELEASE_NAME}}" .
         --namespace "{{.NAMESPACE}}"
         --create-namespace
-        --kube-context "{{.HELM_KUBE_CONTEXT}}"
+        {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
         --values "{{.TERRAFORM_VALUES_FILE}}"
         --values "{{.VALUES_FILE}}"
         --rollback-on-failure
@@ -43,14 +43,19 @@ tasks:
       - >-
         helm uninstall "{{.RELEASE_NAME}}"
         --namespace "{{.NAMESPACE}}"
-        --kube-context "{{.HELM_KUBE_CONTEXT}}"
+        {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
         --ignore-not-found
 
   status:
     desc: Show the Helm release and workload status
     cmds:
-      - helm status "{{.RELEASE_NAME}}" --namespace "{{.NAMESPACE}}" --kube-context "{{.HELM_KUBE_CONTEXT}}"
-      - kubectl --context "{{.HELM_KUBE_CONTEXT}}" --namespace "{{.NAMESPACE}}" get pods,httproutes
+      - >-
+        helm status "{{.RELEASE_NAME}}" --namespace "{{.NAMESPACE}}"
+        {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
+      - >-
+        kubectl
+        {{if .HELM_KUBE_CONTEXT}}--context "{{.HELM_KUBE_CONTEXT}}"{{end}}
+        --namespace "{{.NAMESPACE}}" get pods,httproutes
 
   template:
     desc: Render the chart locally with minimal example values

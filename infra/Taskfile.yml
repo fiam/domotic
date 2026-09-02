@@ -3,8 +3,8 @@ version: '3'
 vars:
   CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
   RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
-  KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH | default (printf "%s/.kube/config" .HOME)}}'
-  TF_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default "domotic"}}'
+  TERRAFORM_KUBE_CONFIG_PATHS: '{{.KUBECONFIG | default (printf "%s/.kube/config" .HOME)}}'
+  TF_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
   STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
   TF_VARS_FILE: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .RESOLVED_CONFIG_DIR)}}'
   TF_KEYS_FILE: '{{.TF_KEYS_FILE | default (printf "%s/infra/zigbee-keys.tfvars.json" .RESOLVED_CONFIG_DIR)}}'
@@ -16,7 +16,7 @@ vars:
 
 env:
   CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
-  KUBE_CONFIG_PATH: '{{.KUBE_CONFIG_PATH}}'
+  KUBE_CONFIG_PATHS: '{{.TERRAFORM_KUBE_CONFIG_PATHS}}'
   KUBE_CTX: '{{.TF_KUBE_CONTEXT}}'
   KUBE_NAMESPACE: '{{.STATE_NAMESPACE}}'
   TF_VARS_FILE: '{{.TF_VARS_FILE}}'
@@ -41,16 +41,22 @@ tasks:
       - sh: test -f "{{.TF_VARS_FILE}}"
         msg: Copy terraform.tfvars.example to the requested TF_VARS_FILE and configure it first.
     cmds:
-      - kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}" get namespace >/dev/null
+      - >-
+        kubectl
+        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
+        get namespace >/dev/null
 
   state-namespace:
     desc: Ensure the Terraform state namespace exists
     deps: [preflight]
     cmds:
       - >-
-        kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}"
+        kubectl
+        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
         create namespace "{{.STATE_NAMESPACE}}" --dry-run=client -o yaml |
-        kubectl --kubeconfig "{{.KUBE_CONFIG_PATH}}" --context "{{.TF_KUBE_CONTEXT}}" apply -f -
+        kubectl
+        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
+        apply -f -
 
   init:
     desc: Initialize Terraform and its Kubernetes backend

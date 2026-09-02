@@ -130,6 +130,14 @@ git push -u origin main
 
 ## 3. Plan and deploy
 
+Domotic uses the current kubeconfig context. `kubectl`, Helm, and the deployment
+tasks honor `KUBECONFIG`, including a platform-separated list of files. Check
+the target before planning or deploying:
+
+```sh
+kubectl config current-context
+```
+
 Validate code, configuration, and credentials before the first plan:
 
 ```sh

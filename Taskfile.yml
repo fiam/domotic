@@ -21,6 +21,8 @@ vars:
   VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
   BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE | default (printf "%s/backup.env" .RESOLVED_CONFIG_DIR)}}'
   SECRETS_FILE: '{{.SECRETS_FILE | default (printf "%s/secrets.sops.yaml" .RESOLVED_CONFIG_DIR)}}'
+  DEV_CLUSTER_NAME: '{{.CLUSTER_NAME | default "domotic"}}'
+  DEV_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default (printf "kind-%s" .DEV_CLUSTER_NAME)}}'
 
 env:
   CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
@@ -123,12 +125,15 @@ tasks:
     desc: Create Kind and deploy the complete development stack
     cmds:
       - task: dev:create
+        vars:
+          CLUSTER_NAME: '{{.DEV_CLUSTER_NAME}}'
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'
       - task: infra:apply
         vars:
-          KUBE_CONTEXT: kind-domotic
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'
       - task: helm:deploy
         vars:
-          KUBE_CONTEXT: kind-domotic
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'
           VALUES_FILE: '{{.ROOT_DIR}}/examples/values-kind.yaml'
 
   destroy-dev:
@@ -136,8 +141,11 @@ tasks:
     cmds:
       - task: helm:uninstall
         vars:
-          KUBE_CONTEXT: kind-domotic
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'
       - task: infra:destroy
         vars:
-          KUBE_CONTEXT: kind-domotic
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'
       - task: dev:destroy
+        vars:
+          CLUSTER_NAME: '{{.DEV_CLUSTER_NAME}}'
+          KUBE_CONTEXT: '{{.DEV_KUBE_CONTEXT}}'

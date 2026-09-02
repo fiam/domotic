@@ -4,10 +4,11 @@ This is the private deployment repository for your home. Edit the files under
 `config/` and run the Task commands here. The Domotic code is downloaded
 automatically at the version recorded in `Taskfile.yml`.
 
-Set `KUBE_CONTEXT` in `Taskfile.yml` to any Kubernetes context that meets the
-[Domotic cluster requirements](https://github.com/fiam/domotic#supported-kubernetes-environments).
-If the server was installed with the k3s guide, the optional
-`task k3s:context` command can import its kubeconfig.
+Commands use the current kubeconfig context and honor `KUBECONFIG`. Check
+`kubectl config current-context` before planning or deploying. The cluster must
+meet the [Domotic requirements](https://github.com/fiam/domotic#supported-kubernetes-environments).
+If the server was installed with the k3s guide, `task k3s:context` can import
+its kubeconfig.
 
 Configure SOPS with a master-key backend of your choice. Domotic does not
 create, locate, or back up that key; `sops` uses its normal configuration,
@@ -34,7 +35,8 @@ Start with:
 
 ```sh
 task --list
-kubectl --context=domotic get nodes
+kubectl config current-context
+kubectl get nodes
 task secrets:check
 task check
 task plan

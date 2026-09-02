@@ -10,8 +10,8 @@ its placeholders:
 
 ```sh
 cp infra/terraform.tfvars.example infra/terraform.tfvars
-task infra:plan KUBE_CONTEXT=domotic
-task infra:apply KUBE_CONTEXT=domotic
+task infra:plan
+task infra:apply
 ```
 
 For a long-lived installation, prefer the independent private repository in
@@ -20,15 +20,13 @@ repository layout: Terraform inputs and generated values live under
 `CONFIG_DIR/infra`, while Helm values and `backup.env` live at its root. The
 default remains this repository, preserving the direct-clone workflow.
 
-The initialization task creates the state namespace and supplies the kubeconfig
-path, context, and state namespace to Terraform's partially configured backend.
-Override these settings when needed:
+The tasks use the current kubeconfig context. `kubectl` and Helm read
+`KUBECONFIG` directly; the Taskfile maps the same path list to Terraform's
+`KUBE_CONFIG_PATHS` because the Kubernetes provider does not read `KUBECONFIG`.
+For example:
 
 ```sh
-task infra:plan \
-  KUBE_CONTEXT=another-context \
-  KUBE_CONFIG_PATH=/path/to/config \
-  STATE_NAMESPACE=another-namespace
+KUBECONFIG=/path/to/config task infra:plan STATE_NAMESPACE=another-namespace
 ```
 
 `task infra:apply` writes `infra/helm-values.yaml` from Terraform outputs for
@@ -42,15 +40,18 @@ The component Taskfile can also be used directly:
 
 ```sh
 cd infra
-task plan KUBE_CONTEXT=domotic
-task apply KUBE_CONTEXT=domotic
-task keys:capture KUBE_CONTEXT=domotic
+task plan
+task apply
+task keys:capture
 ```
 
 Use `CONFIG_DIR` for an external private configuration. Individual
 `TF_VARS_FILE`, `TF_KEYS_FILE`, and `HELM_VALUES_FILE` overrides remain
 available for isolated configurations such as the end-to-end Kind test.
-Absolute paths are recommended when invoking this component Taskfile directly:
+The nonstandard `KUBE_CONTEXT` override remains available for isolated
+automation such as the Kind tests. Normal installations should select their
+current context with `kubectl config use-context`. Absolute configuration paths
+are recommended when invoking this component Taskfile directly:
 
 ```sh
 task apply \

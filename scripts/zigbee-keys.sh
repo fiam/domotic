@@ -100,6 +100,7 @@ write_bundle_from_kubernetes_json() {
 capture_from_cluster() {
   local destination="$1"
   local app_namespace
+  local -a kubectl_context_args=()
 
   require_command kubectl
   require_command terraform
@@ -110,14 +111,14 @@ capture_from_cluster() {
   [[ -n "$app_namespace" ]] || fail "could not determine the application namespace"
   temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/domotic-zigbee-keys.XXXXXX")"
 
-  kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  if [[ -n "${KUBE_CTX:-}" ]]; then
+    kubectl_context_args=(--context "$KUBE_CTX")
+  fi
+
+  kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get secret zigbee-keys -o json > "$temporary_dir/secret.json"
-  kubectl \
-    --kubeconfig "${KUBE_CONFIG_PATH:-$HOME/.kube/config}" \
-    --context "${KUBE_CTX:-domotic}" \
+  kubectl "${kubectl_context_args[@]}" \
     --namespace "$app_namespace" \
     get configmap zigbee-network -o json > "$temporary_dir/configmap.json"
   write_bundle_from_kubernetes_json \

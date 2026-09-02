@@ -4,7 +4,7 @@ set -euo pipefail
 
 usage() {
   echo "Usage: $0 [--user SSH_USER] [--context NAME] <server-hostname>" >&2
-  echo "Example: $0 --user fiam --context domotic automation-host.local" >&2
+  echo "Example: $0 --user admin --context domotic automation-host.local" >&2
 }
 
 ssh_username=""
@@ -68,7 +68,12 @@ if (( ${#positional_arguments[@]} == 2 )); then
   context_name="${positional_arguments[1]}"
 fi
 
-target_config="${HOME:?HOME is not set}/.kube/config"
+target_config="${KUBECONFIG:-${HOME:?HOME is not set}/.kube/config}"
+if [[ "$target_config" == *:* ]]; then
+  echo "The import helper requires KUBECONFIG to name one writable file." >&2
+  echo "Select one target file for the import, then restore your path list." >&2
+  exit 2
+fi
 
 if [[ ! "$server_host" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]]; then
   echo "Invalid server hostname: $server_host" >&2
@@ -207,4 +212,5 @@ install -m 0600 "$merged_config" "$target_config"
 
 echo "Imported context $context_name into $target_config"
 kubectl --kubeconfig "$target_config" config get-contexts "$context_name"
-echo "Test it with: kubectl --context=$context_name get nodes"
+echo "Select it with: kubectl config use-context $context_name"
+echo "Then test it with: kubectl get nodes"
