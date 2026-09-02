@@ -1,6 +1,6 @@
 # Domotic
 
-[![Gateway API v1.0.0+](https://img.shields.io/badge/Gateway%20API-v1.0.0%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://gateway-api.sigs.k8s.io/)
+[![Kubernetes v1.23+](https://img.shields.io/badge/Kubernetes-v1.23%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://kubernetes.io/releases/)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Core-18BCF2?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
 [![Terraform](https://img.shields.io/badge/Terraform-1.7%2B-844FBA?style=flat-square&logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
 [![Helm](https://img.shields.io/badge/Helm-3-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
@@ -17,9 +17,9 @@ commands used below. You do not need to fork this repository.
 
 ### Supported Kubernetes environments
 
-Domotic supports any Kubernetes distribution with Gateway API. The included
-[k3s guide](DEPLOYMENT.md) is a complete reference for a single-node home
-server, not a requirement.
+Domotic supports Kubernetes 1.23 or newer on any distribution with Gateway API.
+The included [k3s guide](DEPLOYMENT.md) is a complete reference for a
+single-node home server, not a requirement.
 
 ### 1. Install the workstation tools
 

@@ -72,6 +72,18 @@ tasks:
     cmds:
       - task: lint
       - |
+        helm template "{{.RELEASE_NAME}}" . \
+          --namespace "{{.NAMESPACE}}" \
+          --kube-version 1.23.0 \
+          --values ../../examples/values-minimal.yaml >/dev/null
+        if helm template "{{.RELEASE_NAME}}" . \
+          --namespace "{{.NAMESPACE}}" \
+          --kube-version 1.22.17 \
+          --values ../../examples/values-minimal.yaml >/dev/null 2>&1; then
+          echo 'Kubernetes releases older than 1.23 must fail chart validation' >&2
+          exit 1
+        fi
+      - |
         ha_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/homeassistant/Chart.yaml)"
         parent_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' Chart.yaml)"
         test -n "$ha_version"
