@@ -12,16 +12,15 @@ locals {
   )
 }
 
-data "cloudflare_account_api_token_permission_groups" "available" {
+data "cloudflare_account_api_token_permission_groups_list" "r2_bucket_item_write" {
   account_id = var.cloudflare_account_id
+  name       = "Workers%20R2%20Storage%20Bucket%20Item%20Write"
 }
 
 locals {
-  r2_bucket_item_write_permission_id = one([
-    for permission in data.cloudflare_account_api_token_permission_groups.available.permission_groups :
-    permission.id
-    if permission.name == "Workers R2 Storage Bucket Item Write"
-  ])
+  r2_bucket_item_write_permission_id = one(
+    data.cloudflare_account_api_token_permission_groups_list.r2_bucket_item_write.result
+  ).id
 }
 
 resource "cloudflare_r2_bucket" "state" {

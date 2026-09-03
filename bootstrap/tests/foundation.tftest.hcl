@@ -1,7 +1,7 @@
 mock_provider "cloudflare" {
-  mock_data "cloudflare_account_api_token_permission_groups" {
+  mock_data "cloudflare_account_api_token_permission_groups_list" {
     defaults = {
-      permission_groups = [{
+      result = [{
         id     = "bucket-item-write"
         name   = "Workers R2 Storage Bucket Item Write"
         scopes = ["com.cloudflare.edge.r2.bucket"]
