@@ -13,7 +13,7 @@ version="${2:-}"
 [[ -n "$values_file" ]] || fail "missing values file"
 [[ -n "$version" ]] || fail "missing Home Assistant version"
 [[ "$version" =~ ^[0-9]{4}\.[0-9]{1,2}\.[0-9]+$ ]] ||
-  fail "Home Assistant version must be an exact stable tag such as 2026.8.3"
+  fail "Home Assistant version must be an exact stable tag such as 2026.9.0"
 [[ -f "$values_file" ]] || fail "values file does not exist: $values_file"
 [[ ! -L "$values_file" ]] || fail "refusing a symlinked values file: $values_file"
 

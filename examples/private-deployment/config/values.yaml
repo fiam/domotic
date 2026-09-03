@@ -22,7 +22,7 @@ zigbee2mqtt:
 
 homeassistant:
   image:
-    tag: "2026.8.3"
+    tag: "2026.9.0"
   config:
     name: "Home"
   persistence:

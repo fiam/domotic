@@ -11,7 +11,7 @@ Last verified: **2026-09-03**
 
 | Contract | Verified value |
 | --- | --- |
-| Home Assistant Core image | `2026.8.3` |
+| Home Assistant Core image | `2026.9.0` |
 | Resulting HTTP storage | `.storage/http`, store `2.2` |
 | Resulting core configuration storage | `.storage/core.config`, store `1.4` |
 | Resulting config-entry storage | `.storage/core.config_entries`, store `1.5` |
@@ -82,27 +82,27 @@ changing their delivery contract.
 
 ## Sources to inspect for every upgrade
 
-Replace `2026.8.3` in these links with the proposed exact tag and compare the
+Replace `2026.9.0` in these links with the proposed exact tag and compare the
 code, constants, schemas, migrations, and tests—not just release notes.
 
-- [Onboarding views and payloads](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/onboarding/views.py)
-- [Login-flow HTTP views](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/auth/login_flow.py)
+- [Onboarding views and payloads](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/onboarding/views.py)
+- [Login-flow HTTP views](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/auth/login_flow.py)
 - [Documented token and revocation API](https://developers.home-assistant.io/docs/auth_api/)
-- [Core-settings WebSocket command](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/config/core.py)
-- [Config-entry flow HTTP views and lookup command](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/config/config_entries.py)
-- [HTTP user-configuration WebSocket commands](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/http/websocket_api.py)
-- [HTTP storage schema](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/http/config.py)
-- [Config-entry storage and migrations](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/config_entries.py)
-- [MQTT config flow](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/mqtt/config_flow.py)
-- [MQTT config-flow tests](https://github.com/home-assistant/core/blob/2026.8.3/tests/components/mqtt/test_config_flow.py)
-- [MQTT constants](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/mqtt/const.py)
-- [Cloudflare R2 config flow](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/config_flow.py)
-- [Backup WebSocket command schemas](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/websocket.py)
-- [Automatic schedule and retention model](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/config.py)
-- [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/agent.py)
-- [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/backup.py)
+- [Core-settings WebSocket command](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/config/core.py)
+- [Config-entry flow HTTP views and lookup command](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/config/config_entries.py)
+- [HTTP user-configuration WebSocket commands](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/http/websocket_api.py)
+- [HTTP storage schema](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/http/config.py)
+- [Config-entry storage and migrations](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/config_entries.py)
+- [MQTT config flow](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/mqtt/config_flow.py)
+- [MQTT config-flow tests](https://github.com/home-assistant/core/blob/2026.9.0/tests/components/mqtt/test_config_flow.py)
+- [MQTT constants](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/mqtt/const.py)
+- [Cloudflare R2 config flow](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/cloudflare_r2/config_flow.py)
+- [Backup WebSocket command schemas](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/websocket.py)
+- [Automatic schedule and retention model](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/config.py)
+- [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/agent.py)
+- [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/cloudflare_r2/backup.py)
 - [Native backup documentation](https://www.home-assistant.io/integrations/backup/)
-- [Core backup archive construction and exclusions](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/manager.py)
+- [Core backup archive construction and exclusions](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/manager.py)
 - [Zigbee2MQTT backup request](https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqttbridgerequestbackup)
 
 Inspect the tests beside these source files as well. They often document
@@ -160,10 +160,19 @@ identity before changing production.
 
 ## Baseline observations
 
-The `2026.8.3` baseline was exercised with a fresh Kind cluster and PVC,
+The `2026.9.0` baseline was exercised with a fresh Kind cluster and PVC,
 automated owner creation, real login and token revocation, MQTT and Cloudflare
-R2 reporting `loaded`, storage checks, a rollout restart, and local and tunnel
-route checks.
+R2 reporting `loaded`, storage checks, a rollout restart, a second idempotent
+hook run, and local HTTP and WebSocket route checks.
+
+The source audit found no payload changes in the onboarding, core settings,
+config-entry lookup, MQTT broker, Cloudflare R2, or backup commands used by the
+hook. Login-flow forms now use the newer field serializer, and IndieAuth has
+expanded client metadata handling; the hook's identical client and redirect
+origins continue to take the direct validation path. HTTP configuration now
+rejects forwarded headers unless at least one trusted proxy is present. The
+chart already supplies both settings together and the fresh-volume trial and
+promotion succeeded.
 
 MQTT and Cloudflare R2 creation were re-exercised on a blank PVC through their
 native config flows. The resulting entries had fresh generated IDs and MQTT
@@ -190,6 +199,12 @@ failure.
 Native-backup upload through R2 is verified. Download/decryption and a complete
 native restore were not exercised in this baseline and remain required before
 approving a Home Assistant version change for production.
+
+Cloudflare Tunnel routing was not attached to the isolated compatibility
+cluster. It was subsequently exercised on the recreated development
+deployment: the public route returned the Home Assistant frontend, upgraded a
+WebSocket connection, and completed a fresh owner login. The local Gateway
+route and its WebSocket upgrade were also verified.
 
 The Zigbee2MQTT snapshot CronJob was exercised against the live Kind test
 broker. Required pod affinity placed it on Home Assistant's node, and the
