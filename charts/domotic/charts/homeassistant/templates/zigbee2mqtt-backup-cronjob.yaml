@@ -1,0 +1,143 @@
+{{- if .Values.zigbee2mqttBackup.enabled }}
+{{- $backupDirectory := required "zigbee2mqttBackup.directory is required when the backup is enabled" .Values.zigbee2mqttBackup.directory }}
+{{- if or (hasPrefix "/" $backupDirectory) (contains ".." $backupDirectory) }}
+{{- fail "zigbee2mqttBackup.directory must be a safe path relative to Home Assistant's configuration directory" }}
+{{- end }}
+{{- $mqttServer := required "zigbee2mqttBackup.mqtt.server is required when the backup is enabled" .Values.zigbee2mqttBackup.mqtt.server }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "homeassistant.zigbee2mqttBackupName" . }}
+  labels:
+    {{- include "homeassistant.labels" . | nindent 4 }}
+    app.kubernetes.io/component: zigbee2mqtt-backup
+spec:
+  schedule: {{ .Values.zigbee2mqttBackup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.zigbee2mqttBackup.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.zigbee2mqttBackup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.zigbee2mqttBackup.failedJobsHistoryLimit }}
+  jobTemplate:
+    metadata:
+      labels:
+        {{- include "homeassistant.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: zigbee2mqtt-backup
+    spec:
+      activeDeadlineSeconds: {{ .Values.zigbee2mqttBackup.activeDeadlineSeconds }}
+      backoffLimit: {{ .Values.zigbee2mqttBackup.backoffLimit }}
+      template:
+        metadata:
+          labels:
+            {{- include "homeassistant.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: zigbee2mqtt-backup
+          {{- with .Values.zigbee2mqttBackup.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      {{- include "homeassistant.selectorLabels" . | nindent 22 }}
+                      app.kubernetes.io/component: server
+                  topologyKey: kubernetes.io/hostname
+          containers:
+            - name: snapshot
+              image: "{{ .Values.zigbee2mqttBackup.image.repository }}:{{ .Values.zigbee2mqttBackup.image.tag }}"
+              imagePullPolicy: {{ .Values.zigbee2mqttBackup.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -c
+              args:
+                - |
+                  set -eu
+                  umask 077
+
+                  backup_directory="/config/${BACKUP_DIRECTORY}"
+                  work_directory="/config/.cache/domotic-zigbee2mqtt"
+                  response_file="${work_directory}/response-${HOSTNAME}"
+                  compact_file="${work_directory}/response-${HOSTNAME}.compact"
+                  archive_file="${work_directory}/backup-${HOSTNAME}.zip"
+                  timestamp_file="${work_directory}/timestamp-${HOSTNAME}"
+                  trap 'rm -f "$response_file" "$compact_file" "$archive_file" "$timestamp_file"' EXIT
+                  mkdir -p "$backup_directory" "$work_directory"
+
+                  set -- \
+                    -V mqttv311 \
+                    -h "$MQTT_SERVER" \
+                    -p "$MQTT_PORT" \
+                    -t "${MQTT_BASE_TOPIC}/bridge/request/backup" \
+                    -e "${MQTT_BASE_TOPIC}/bridge/response/backup" \
+                    -m '{}' \
+                    -q 1 \
+                    -R \
+                    -N \
+                    -W "$MQTT_TIMEOUT_SECONDS"
+                  if [ -n "${MQTT_USERNAME:-}" ]; then
+                    set -- "$@" -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD"
+                  fi
+
+                  mosquitto_rr "$@" > "$response_file"
+                  tr -d '\r\n\t ' < "$response_file" > "$compact_file"
+                  mv "$compact_file" "$response_file"
+                  grep -Fq '"status":"ok"' "$response_file" || {
+                    echo 'Zigbee2MQTT rejected the backup request' >&2
+                    exit 1
+                  }
+                  encoded="$(sed -n 's/.*"zip":"\([^"]*\)".*/\1/p' "$response_file")"
+                  test -n "$encoded" || {
+                    echo 'Zigbee2MQTT returned no backup archive' >&2
+                    exit 1
+                  }
+                  printf '%s' "$encoded" | base64 -d > "$archive_file"
+                  unzip -t "$archive_file" >/dev/null
+
+                  date -u '+%Y-%m-%dT%H:%M:%SZ' > "$timestamp_file"
+                  mv "$archive_file" "$backup_directory/latest.zip"
+                  mv "$timestamp_file" "$backup_directory/latest.timestamp"
+                  echo "Staged a Zigbee2MQTT snapshot for the next Home Assistant backup"
+              env:
+                - name: BACKUP_DIRECTORY
+                  value: {{ $backupDirectory | quote }}
+                - name: MQTT_SERVER
+                  value: {{ $mqttServer | quote }}
+                - name: MQTT_PORT
+                  value: {{ .Values.zigbee2mqttBackup.mqtt.port | quote }}
+                - name: MQTT_BASE_TOPIC
+                  value: {{ .Values.zigbee2mqttBackup.mqtt.baseTopic | quote }}
+                - name: MQTT_TIMEOUT_SECONDS
+                  value: {{ .Values.zigbee2mqttBackup.timeoutSeconds | quote }}
+                {{- if .Values.zigbee2mqttBackup.mqtt.existingSecret.name }}
+                - name: MQTT_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.zigbee2mqttBackup.mqtt.existingSecret.name }}
+                      key: {{ .Values.zigbee2mqttBackup.mqtt.existingSecret.usernameKey }}
+                - name: MQTT_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.zigbee2mqttBackup.mqtt.existingSecret.name }}
+                      key: {{ .Values.zigbee2mqttBackup.mqtt.existingSecret.passwordKey }}
+                {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: config
+                  mountPath: /config
+              {{- with .Values.zigbee2mqttBackup.resources }}
+              resources:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+          volumes:
+            - name: config
+              persistentVolumeClaim:
+                claimName: {{ include "homeassistant.fullname" . }}-pvc
+{{- end }}

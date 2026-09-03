@@ -42,7 +42,7 @@ customComponents:
     resources: {}
 
 # Create or authenticate the admin account through Home Assistant's built-in
-# but undocumented onboarding/login flows. Terraform seed mode always enables
+# but undocumented onboarding/login flows. OpenTofu seed mode always enables
 # this hook and supplies the Secret; restore mode disables it. The authenticated
 # hook also creates missing MQTT and R2 entries through their config flows and
 # reconciles HTTP proxy settings. It preserves completed onboarding and never
@@ -61,7 +61,7 @@ onboarding:
 
 # Create Home Assistant's official Cloudflare R2 backup integration through its
 # config flow in authenticated seed mode when no matching entry exists.
-# Terraform supplies this block and creates the referenced Secret when
+# OpenTofu supplies this block and creates the referenced Secret when
 # r2_backup_bucket_name is configured.
 r2Backup:
   enabled: false
@@ -72,7 +72,7 @@ r2Backup:
     name: ""
     accessKeyIdKey: access_key_id
     secretAccessKeyKey: secret_access_key
-  # With Terraform, this defaults to daily backups retained for seven copies
+  # With OpenTofu, this defaults to daily backups retained for seven copies
   # when R2 is enabled in seed mode. Set existingSecret.name to encrypt them;
   # leave it empty for unencrypted backups. The onboarding hook initializes
   # only an unconfigured backup schedule; later UI changes remain owned by
@@ -86,6 +86,36 @@ r2Backup:
     existingSecret:
       name: ""
       passwordKey: password
+
+# Periodically ask Zigbee2MQTT for its supported data-directory backup and
+# stage the latest ZIP inside /config. Home Assistant's native backup includes
+# that file with the rest of its configuration. The CronJob mounts only the
+# Home Assistant claim and is scheduled onto the Home Assistant pod's node so
+# it remains compatible with ReadWriteOnce volumes.
+zigbee2mqttBackup:
+  enabled: false
+  schedule: "17 * * * *"
+  directory: .domotic/zigbee2mqtt
+  timeoutSeconds: 120
+  startingDeadlineSeconds: 1800
+  activeDeadlineSeconds: 300
+  backoffLimit: 2
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  image:
+    repository: eclipse-mosquitto
+    tag: "2.1.2-alpine"
+    pullPolicy: IfNotPresent
+  mqtt:
+    server: ""
+    port: 1883
+    baseTopic: zigbee2mqtt
+    existingSecret:
+      name: ""
+      usernameKey: username
+      passwordKey: password
+  podAnnotations: {}
+  resources: {}
 
 # This sets the container image more information can be found here: https://kubernetes.io/docs/concepts/containers/images/
 image:

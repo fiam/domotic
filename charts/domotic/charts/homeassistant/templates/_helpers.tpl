@@ -6,6 +6,13 @@ Expand the name of the chart.
 {{- end }}
 
 {{/*
+Name the CronJob that stages Zigbee2MQTT data for Home Assistant backups.
+*/}}
+{{- define "homeassistant.zigbee2mqttBackupName" -}}
+{{- printf "%s-z2m-backup" (include "homeassistant.fullname" . | trunc 52 | trimSuffix "-") }}
+{{- end }}
+
+{{/*
 Name a repository-local or remotely fetched custom component volume.
 */}}
 {{- define "homeassistant.customComponentName" -}}
