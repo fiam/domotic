@@ -1,8 +1,8 @@
 version: '3'
 
 # This Taskfile is intentionally self-contained. It reads the requested Git
-# revision from its own remote URL, then creates a detached, commit-pinned
-# source tree before delegating to the main Taskfile.
+# revision from its own remote URL, materializes that revision, and only then
+# delegates to repository scripts and Taskfiles.
 
 vars:
   PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
@@ -23,16 +23,18 @@ vars:
           }'
       })"
       printf '%s\n' "${requested_ref:-main}"
-  STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
+  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .CONFIG_DIR)}}'
+  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .PRIVATE_ROOT)}}'
   RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
   NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
   SSH_USER: '{{.SSH_USER | default ""}}'
   SSH_HOST: '{{.SSH_HOST | default ""}}'
-  SECRETS_FILE: '{{.SECRETS_FILE | default (printf "%s/secrets.sops.yaml" .CONFIG_DIR)}}'
 
 env:
   DOMOTIC_SSH_USER: '{{.SSH_USER}}'
   DOMOTIC_SSH_HOST: '{{.SSH_HOST}}'
+  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE}}'
+  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE}}'
 
 tasks:
   default:
@@ -40,7 +42,8 @@ tasks:
     cmds:
       - task --list
 
-  bootstrap:
+  source:sync:
+    internal: true
     desc: Materialize the requested Domotic revision in the ignored local cache
     cmds:
       - |
@@ -124,7 +127,7 @@ tasks:
 
   init:
     desc: Initialize a private deployment repository in the working directory
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - |
         private_root='{{.PRIVATE_ROOT}}'
@@ -148,20 +151,60 @@ tasks:
           git -C "$private_root" init -b main
         fi
         printf 'Private deployment scaffold created in %s.\n' "$private_root"
-        printf 'Edit config/, encrypt the SOPS credentials, then run task check and task plan.\n'
+        printf 'Edit config/bootstrap.tfvars and config/, then run task bootstrap.\n'
+
+  bootstrap:
+    desc: Create the encrypted R2 state and backup foundation
+    deps: [source:sync]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        bootstrap "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" bootstrap:apply
+        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
+        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
+      - |
+        printf 'Bootstrap state updated: %s\n' '{{.BOOTSTRAP_STATE_FILE}}'
+        printf 'Review and commit that encrypted file before deploying.\n'
+
+  cloudflare-token:update:
+    desc: Replace the Cloudflare account token retained in encrypted state
+    deps: [source:sync]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        rotate-cloudflare-token "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" bootstrap:apply
+        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
+        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
+      - |
+        printf 'Cloudflare token replaced in encrypted bootstrap state.\n'
+        printf 'Review and commit %s.\n' '{{.BOOTSTRAP_STATE_FILE}}'
+
+  recovery-passphrase:update:
+    desc: Re-encrypt bootstrap and main state with a new recovery passphrase
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/rotate-recovery-passphrase.sh"
+        "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}"
+        "{{.BOOTSTRAP_STATE_FILE}}"
 
   config:check:
     desc: Validate private configuration and Git secret boundaries
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - >-
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" config:check
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        SECRETS_FILE="{{.SECRETS_FILE}}"
+        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
+        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
 
   domotic:update:
     desc: Update the pinned Domotic revision without deploying it
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - |
         target_ref='{{.REF | default "main"}}'
@@ -211,7 +254,7 @@ tasks:
 
   k3s:context:
     desc: Import the k3s server into the default kubeconfig
-    deps: [bootstrap]
+    deps: [source:sync]
     requires:
       vars: [SSH_USER, SSH_HOST]
     cmds:
@@ -222,56 +265,35 @@ tasks:
 
   check:
     desc: Validate the pinned source and private configuration
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - task --dir "{{.DOMOTIC_SOURCE_DIR}}" check
       - task: config:check
 
-  secrets:check:
-    desc: Confirm that SOPS can decrypt the deployment secrets
-    deps: [bootstrap]
-    cmds:
-      - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        check "{{.SECRETS_FILE}}"
-
-  secrets:edit:
-    desc: Edit the encrypted deployment secrets with SOPS
-    deps: [bootstrap]
-    preconditions:
-      - sh: command -v sops >/dev/null 2>&1
-        msg: sops is required to edit deployment secrets.
-      - sh: test -f "{{.SECRETS_FILE}}"
-        msg: Create and encrypt config/secrets.sops.yaml first.
-    cmds:
-      - sops "{{.SECRETS_FILE}}"
-
   plan:
-    desc: Plan the private deployment with SOPS credentials
+    desc: Plan the private deployment against encrypted R2 state
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        seed "{{.SECRETS_FILE}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" infra:plan
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
 
   deploy:
-    desc: Apply Terraform and deploy the pinned Helm chart
+    desc: Apply OpenTofu and deploy the pinned Helm chart
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        seed "{{.SECRETS_FILE}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" deploy
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
         RELEASE_NAME="{{.RELEASE_NAME}}"
         NAMESPACE="{{.NAMESPACE}}"
 
   homeassistant:deploy:
-    desc: Deploy the Helm release without applying Terraform
+    desc: Deploy the Helm release without applying OpenTofu
     deps: [config:check]
     cmds:
       - >-
@@ -298,11 +320,10 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        cloudflare "{{.SECRETS_FILE}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
         RELEASE_NAME="{{.RELEASE_NAME}}"
         NAMESPACE="{{.NAMESPACE}}"
 
@@ -311,75 +332,81 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        cloudflare "{{.SECRETS_FILE}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:plan
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
+
+  restore:complete:
+    desc: Record the restored owner credential and resume reconciliation
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:complete
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        RELEASE_NAME="{{.RELEASE_NAME}}"
+        NAMESPACE="{{.NAMESPACE}}"
+
+  credentials:show:
+    desc: Reveal Home Assistant recovery credentials
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" credentials:show
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+
+  credentials:update:
+    desc: Record a changed Home Assistant owner credential in encrypted state
+    deps: [config:check]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" credentials:update
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+
+  zigbee:import:
+    desc: Import an existing Zigbee identity into encrypted state
+    deps: [config:check]
+    requires:
+      vars: [SOURCE]
+    cmds:
+      - >-
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
+        task --dir "{{.DOMOTIC_SOURCE_DIR}}" zigbee:import
+        CONFIG_DIR="{{.CONFIG_DIR}}"
+        SOURCE="{{.SOURCE}}"
 
   status:
     desc: Show the deployed release and workload status
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - >-
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" helm:status
         RELEASE_NAME="{{.RELEASE_NAME}}"
         NAMESPACE="{{.NAMESPACE}}"
 
-  backup:
-    desc: Create an encrypted configuration backup in R2
-    deps: [config:check]
-    cmds:
-      - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
-
-  backup:list:
-    desc: List encrypted configuration backups in R2
-    deps: [bootstrap]
-    cmds:
-      - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup:list
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-
-  backup:restore:
-    desc: Restore one encrypted configuration backup into config/restore
-    deps: [bootstrap]
-    requires:
-      vars: [OBJECT]
-    cmds:
-      - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" backup:restore
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        OBJECT="{{.OBJECT}}"
-
-  keys:capture:
-    desc: Capture the live Zigbee identity into the private runtime files
-    deps: [bootstrap]
-    cmds:
-      - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" keys:capture
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
-
   destroy:
-    desc: Uninstall the release and destroy Terraform-managed resources
+    desc: Remove workloads and ordinary infrastructure, preserving R2 buckets
     deps: [config:check]
-    prompt: This removes the private deployment. Continue?
+    prompt: This removes the deployment but preserves R2 state and backups. Continue?
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-deployment-secrets.sh"
-        cloudflare "{{.SECRETS_FILE}}" --
+        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
         task --dir "{{.DOMOTIC_SOURCE_DIR}}" destroy
         CONFIG_DIR="{{.CONFIG_DIR}}"
-        STATE_NAMESPACE="{{.STATE_NAMESPACE}}"
         RELEASE_NAME="{{.RELEASE_NAME}}"
         NAMESPACE="{{.NAMESPACE}}"
 
   version:
     desc: Show the requested and materialized Domotic revisions
-    deps: [bootstrap]
+    deps: [source:sync]
     cmds:
       - echo "Requested revision {{.DOMOTIC_REQUESTED_REF}}"
       - git -C "{{.DOMOTIC_SOURCE_DIR}}" log -1 --oneline

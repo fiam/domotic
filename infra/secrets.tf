@@ -74,16 +74,10 @@ locals {
   )
 
   # Determine desired values
-  desired_network_key = coalesce(
-    var.zigbee_network_key,
-    try(random_password.zigbee_network_key[0].result, null)
-  )
-  desired_ext_pan_id = coalesce(
-    var.zigbee_ext_pan_id,
-    try(random_id.zigbee_ext_pan_id[0].hex, null)
-  )
-  desired_pan_id  = var.zigbee_pan_id
-  desired_channel = var.zigbee_channel
+  desired_network_key = terraform_data.zigbee_identity.output.network_key
+  desired_ext_pan_id  = terraform_data.zigbee_identity.output.ext_pan_id
+  desired_pan_id      = var.zigbee_pan_id
+  desired_channel     = var.zigbee_channel
 
   # Check if protected fields would change (Secret)
   network_key_would_change = local.secret_exists && local.existing_network_key != local.desired_network_key
@@ -105,12 +99,6 @@ locals {
 
   # Overall protection check
   protected_fields_would_change = local.secret_fields_would_change || local.configmap_fields_would_change
-
-  # Validate we have all required values
-  has_keys = (
-    (var.zigbee_network_key != null && var.zigbee_ext_pan_id != null) ||
-    var.generate_zigbee_keys
-  )
 
   identity_metadata_matches_config = (
     (var.zigbee_expected_pan_id == null || var.zigbee_expected_pan_id == local.desired_pan_id) &&
@@ -137,8 +125,9 @@ locals {
     If you REALLY want to change these (requires re-pairing all devices):
       force_update_secrets = true
 
-    Otherwise, preserve the live Secret before changing anything:
-      task keys:capture
+    Otherwise, preserve encrypted OpenTofu state and a current native backup.
+    Import a replacement identity explicitly with:
+      task zigbee:import SOURCE=/path/to/zigbee-keys.tfvars.json
 
     Inspect the non-secret radio settings with:
       kubectl -n ${var.kubernetes_namespace} get configmap zigbee-network -o yaml
@@ -147,17 +136,19 @@ locals {
 }
 
 # ------------------------------------------------------------------------------
-# Key Generation (only if requested)
+# Key generation
 # ------------------------------------------------------------------------------
 
-resource "random_password" "zigbee_network_key" {
-  count = var.generate_zigbee_keys && var.zigbee_network_key == null ? 1 : 0
+resource "random_id" "zigbee_network_key_high" {
+  byte_length = 8
 
-  length  = 32
-  special = false
-  upper   = true
-  lower   = false
-  numeric = true
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+resource "random_id" "zigbee_network_key_low" {
+  byte_length = 8
 
   lifecycle {
     ignore_changes = all
@@ -165,12 +156,37 @@ resource "random_password" "zigbee_network_key" {
 }
 
 resource "random_id" "zigbee_ext_pan_id" {
-  count = var.generate_zigbee_keys && var.zigbee_ext_pan_id == null ? 1 : 0
-
   byte_length = 8
 
   lifecycle {
     ignore_changes = all
+  }
+}
+
+resource "terraform_data" "zigbee_identity" {
+  input = {
+    network_key = coalesce(
+      var.zigbee_network_key,
+      lower("${random_id.zigbee_network_key_high.hex}${random_id.zigbee_network_key_low.hex}")
+    )
+    ext_pan_id = coalesce(
+      var.zigbee_ext_pan_id,
+      random_id.zigbee_ext_pan_id.hex
+    )
+  }
+
+  # Generated or imported keys are retained in encrypted state. To import a
+  # different identity, the operator must explicitly replace this resource.
+  lifecycle {
+    ignore_changes = [input]
+
+    precondition {
+      condition = (
+        local.identity_metadata_matches_config ||
+        var.force_update_secrets
+      )
+      error_message = "The imported Zigbee identity does not match the configured PAN ID and channel."
+    }
   }
 }
 
@@ -180,23 +196,7 @@ resource "random_id" "zigbee_ext_pan_id" {
 
 resource "terraform_data" "zigbee_protection_check" {
   lifecycle {
-    # Check 1: Must provide keys or request generation
-    precondition {
-      condition     = local.has_keys
-      error_message = <<-EOT
-        ❌ Missing Zigbee keys!
-
-        You must either:
-          1. Provide both keys:
-             zigbee_network_key = "32-hex-chars"
-             zigbee_ext_pan_id  = "16-hex-chars"
-
-          2. Enable generation (first run only):
-             generate_zigbee_keys = true
-      EOT
-    }
-
-    # Check 2: A restored identity must be paired with its recorded radio
+    # Check 1: A restored identity must be paired with its recorded radio
     # settings, even when the target cluster has no existing ConfigMap yet.
     precondition {
       condition = (
@@ -215,12 +215,17 @@ resource "terraform_data" "zigbee_protection_check" {
       EOT
     }
 
-    # Check 3: Protect existing resources from accidental changes
+    # Check 2: Protect existing resources from accidental changes
     precondition {
       condition     = !local.protected_fields_would_change || var.force_update_secrets
       error_message = local.protection_error_message
     }
   }
+}
+
+moved {
+  from = random_id.zigbee_ext_pan_id[0]
+  to   = random_id.zigbee_ext_pan_id
 }
 
 # ------------------------------------------------------------------------------
@@ -238,7 +243,7 @@ resource "kubernetes_config_map" "zigbee_network" {
     namespace = var.kubernetes_namespace
 
     labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app.kubernetes.io/managed-by" = "opentofu"
       "app.kubernetes.io/component"  = "zigbee2mqtt"
     }
 
@@ -282,7 +287,7 @@ resource "kubernetes_secret" "zigbee_keys" {
     namespace = var.kubernetes_namespace
 
     labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app.kubernetes.io/managed-by" = "opentofu"
       "app.kubernetes.io/component"  = "zigbee2mqtt"
     }
 

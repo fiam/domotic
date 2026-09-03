@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 fail() {
@@ -19,26 +18,26 @@ canonical_path() {
 }
 
 config_dir="${1:-}"
-terraform_vars_file="${2:-}"
-values_file="${3:-}"
-terraform_keys_file="${4:-}"
-helm_values_file="${5:-}"
-backup_env_file="${6:-}"
-secrets_file="${7:-}"
+bootstrap_vars_file="${2:-}"
+bootstrap_state_file="${3:-}"
+tofu_vars_file="${4:-}"
+values_file="${5:-}"
+helm_values_file="${6:-}"
 
 [[ -n "$config_dir" ]] || fail "missing configuration directory"
-[[ -n "$secrets_file" ]] || fail "missing SOPS secrets file path"
+[[ -n "$helm_values_file" ]] || fail "missing generated Helm values path"
 [[ -d "$config_dir" ]] || fail "configuration directory does not exist: $config_dir"
 config_dir="$(cd "$config_dir" && pwd -P)"
-terraform_vars_file="$(canonical_path "$terraform_vars_file")"
+bootstrap_vars_file="$(canonical_path "$bootstrap_vars_file")"
+bootstrap_state_file="$(canonical_path "$bootstrap_state_file")"
+tofu_vars_file="$(canonical_path "$tofu_vars_file")"
 values_file="$(canonical_path "$values_file")"
-terraform_keys_file="$(canonical_path "$terraform_keys_file")"
 helm_values_file="$(canonical_path "$helm_values_file")"
-backup_env_file="$(canonical_path "$backup_env_file")"
-secrets_file="$(canonical_path "$secrets_file")"
-[[ -f "$terraform_vars_file" ]] || fail "missing Terraform variables file: $terraform_vars_file"
+
+[[ -f "$bootstrap_vars_file" ]] || fail "missing bootstrap variables file: $bootstrap_vars_file"
+[[ -f "$bootstrap_state_file" ]] || fail "missing encrypted bootstrap state; run task bootstrap first"
+[[ -f "$tofu_vars_file" ]] || fail "missing OpenTofu variables file: $tofu_vars_file"
 [[ -f "$values_file" ]] || fail "missing Helm values file: $values_file"
-[[ -f "$secrets_file" ]] || fail "missing SOPS secrets file: $secrets_file"
 
 git_root="$(git -C "$config_dir" rev-parse --show-toplevel 2>/dev/null || true)"
 [[ -n "$git_root" ]] || fail "configuration directory must be inside a Git repository"
@@ -47,7 +46,7 @@ tracked_path() {
   local path="$1"
   local relative_path
 
-  [[ -n "$git_root" && "$path" == "$git_root"/* ]] || return 1
+  [[ "$path" == "$git_root"/* ]] || return 1
   relative_path="${path#"$git_root"/}"
   git -C "$git_root" ls-files --error-unmatch -- "$relative_path" >/dev/null 2>&1
 }
@@ -67,29 +66,34 @@ check_private_file() {
   fi
 }
 
-if tracked_path "$terraform_vars_file" &&
-  grep -E -q '^[[:space:]]*(cloudflare_api_token|homeassistant_onboarding|homeassistant_backup_password)([[:space:]]|=|$)' "$terraform_vars_file"; then
-  fail "tracked Terraform variables must obtain Cloudflare and Home Assistant credentials from SOPS"
+tracked_path "$bootstrap_vars_file" ||
+  fail "bootstrap variables must be tracked in Git: $bootstrap_vars_file"
+tracked_path "$bootstrap_state_file" ||
+  fail "encrypted bootstrap state must be tracked in Git: $bootstrap_state_file"
+tracked_path "$tofu_vars_file" ||
+  fail "OpenTofu variables must be tracked in Git: $tofu_vars_file"
+tracked_path "$values_file" ||
+  fail "Helm values must be tracked in Git: $values_file"
+
+grep -Eq '"encrypted_data"[[:space:]]*:' "$bootstrap_state_file" ||
+  fail "bootstrap state is not an OpenTofu-encrypted state file"
+if grep -Fq 'CLOUDFLARE_API_TOKEN' "$bootstrap_state_file"; then
+  fail "bootstrap state contains a plaintext Cloudflare credential"
 fi
 
-tracked_path "$secrets_file" || fail "the encrypted SOPS secrets file must be tracked in Git: $secrets_file"
-grep -Eq '^CLOUDFLARE_API_TOKEN:[[:space:]]+ENC\[' "$secrets_file" ||
-  fail "CLOUDFLARE_API_TOKEN must be encrypted in the SOPS secrets file"
-if grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:' "$secrets_file"; then
-  grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:[[:space:]]+ENC\[' "$secrets_file" ||
-    fail "HOMEASSISTANT_ADMIN_PASSWORD must be encrypted in the SOPS secrets file"
+if grep -E -q '^[[:space:]]*(cloudflare_api_token|state_passphrase)([[:space:]]|=|$)' \
+  "$bootstrap_vars_file"; then
+  fail "bootstrap variables must not contain credentials or the recovery passphrase"
 fi
-if grep -Eq '^HOMEASSISTANT_BACKUP_PASSWORD:' "$secrets_file"; then
-  grep -Eq '^HOMEASSISTANT_BACKUP_PASSWORD:[[:space:]]+ENC\[' "$secrets_file" ||
-    fail "HOMEASSISTANT_BACKUP_PASSWORD must be encrypted in the SOPS secrets file"
+
+if grep -E -q '^[[:space:]]*(cloudflare_api_token|state_passphrase|r2_backup_credentials|homeassistant_admin_password_override)([[:space:]]|=|$)' \
+  "$tofu_vars_file"; then
+  fail "tracked OpenTofu variables contain a runtime credential"
 fi
-grep -Eq '^sops:' "$secrets_file" || fail "SOPS metadata is missing from the encrypted secrets file"
 
-check_private_file "$config_dir/secrets.yaml" "plaintext SOPS input file"
-
-check_private_file "$terraform_keys_file" "Zigbee identity file"
 check_private_file "$helm_values_file" "generated Helm values"
-check_private_file "$backup_env_file" "backup environment file"
+check_private_file "$config_dir/secrets.yaml" "legacy plaintext secrets file"
+check_private_file "$config_dir/infra/zigbee-keys.tfvars.json" "legacy Zigbee identity file"
 
 restore_dir="$config_dir/restore"
 if [[ "$restore_dir" == "$git_root"/* ]]; then

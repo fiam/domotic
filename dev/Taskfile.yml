@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  CLUSTER_NAME: '{{.CLUSTER_NAME | default "domotic"}}'
+  CLUSTER_NAME: '{{.CLUSTER_NAME | default "ha"}}'
   DEV_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default (printf "kind-%s" .CLUSTER_NAME)}}'
   NGF_VERSION: '{{.NGF_VERSION | default "2.6.7"}}'
   DEV_HOST_ADDRESS: '{{.HOST_ADDRESS | default "127.0.0.1"}}'

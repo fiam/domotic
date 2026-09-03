@@ -4,11 +4,14 @@
 /.domotic/
 /.task/
 
-# Generated and sensitive runtime files.
-/config/backup.env
+# Generated runtime files.
 /config/infra/helm-values.yaml
 /config/infra/zigbee-keys.tfvars.json
 /config/restore/
 
-# Temporary plaintext input used only while creating the SOPS document.
+# Never commit plaintext credential files.
 /config/secrets.yaml
+
+# The bootstrap state is encrypted by OpenTofu and intentionally committed.
+/state/*
+!/state/bootstrap.tfstate

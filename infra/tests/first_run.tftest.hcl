@@ -31,7 +31,7 @@ mock_provider "random" {
 
   mock_resource "random_id" {
     defaults = {
-      hex = "0123456789ABCDEF"
+      hex = "0123456789abcdef"
     }
   }
 }
@@ -40,14 +40,9 @@ run "empty_namespace_first_apply" {
   command = apply
 
   variables {
-    cloudflare_api_token  = "mock-api-token"
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
     kubernetes_namespace  = "domotic-test"
-    generate_zigbee_keys  = true
-    homeassistant_onboarding = {
-      password = "a-long-test-password"
-    }
     local_http_urls = {
       homeassistant = "http://homeassistant.local:8080"
       zigbee2mqtt   = "http://zigbee2mqtt.local:8080"
@@ -60,16 +55,38 @@ run "empty_namespace_first_apply" {
   }
 
   assert {
+    condition = (
+      nonsensitive(kubernetes_secret.homeassistant_onboarding[0].data["password"]) ==
+      "0123456789ABCDEF0123456789ABCDEF"
+    )
+    error_message = "Seed mode must generate the initial Home Assistant password."
+  }
+
+  assert {
     condition     = local.configmap_exists == false
     error_message = "An absent zigbee-network ConfigMap must be treated as a clean first run."
   }
 
   assert {
-    condition = can(regex(
-      "^[0-9A-F]{32}$",
-      nonsensitive(kubernetes_secret.zigbee_keys.data["network_key"])
-    ))
+    condition = (
+      random_id.zigbee_network_key_high.byte_length == 8 &&
+      random_id.zigbee_network_key_low.byte_length == 8
+    )
+    error_message = "Each generated Zigbee key half must contain eight hexadecimal random bytes."
+  }
+
+  assert {
+    condition = length(
+      nonsensitive(terraform_data.zigbee_identity.input.network_key)
+    ) == 32
     error_message = "The first apply must create a 32-character Zigbee network key."
+  }
+
+  assert {
+    condition = nonsensitive(
+      kubernetes_secret.zigbee_keys.data["network_key"] == local.desired_network_key
+    )
+    error_message = "The generated Zigbee network key must reach the Kubernetes Secret unchanged."
   }
 
   assert {
@@ -100,48 +117,51 @@ run "empty_namespace_first_apply" {
     condition = (
       length(yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote) == 0
     )
-    error_message = "Terraform must not select a custom Home Assistant integration by default."
+    error_message = "OpenTofu must not select a custom Home Assistant integration by default."
+  }
+
+  assert {
+    condition = (
+      yamldecode(output.helm_values_yaml).homeassistant.zigbee2mqttBackup.enabled &&
+      yamldecode(output.helm_values_yaml).homeassistant.zigbee2mqttBackup.mqtt.server ==
+      "domotic-mosquitto.domotic-test.svc.cluster.local"
+    )
+    error_message = "OpenTofu must enable Zigbee2MQTT snapshots through the in-cluster MQTT service."
   }
 }
 
-run "seed_requires_an_admin_password" {
+run "seed_generates_an_admin_password" {
   command = plan
 
   variables {
-    cloudflare_api_token  = "mock-api-token"
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
     kubernetes_namespace  = "domotic-test"
-    generate_zigbee_keys  = true
   }
 
-  expect_failures = [
-    terraform_data.homeassistant_seed_check,
-  ]
+  assert {
+    condition     = length(random_password.homeassistant_admin.result) > 0
+    error_message = "Seed mode must not require an operator-supplied password."
+  }
 }
 
 run "restored_identity_must_match_radio_settings" {
   command = plan
 
   variables {
-    cloudflare_api_token    = "mock-api-token"
     cloudflare_account_id   = "00000000000000000000000000000000"
     cloudflare_domain       = "example.com"
     kubernetes_namespace    = "domotic-test"
-    generate_zigbee_keys    = false
     zigbee_network_key      = "0123456789ABCDEF0123456789ABCDEF"
     zigbee_ext_pan_id       = "0123456789ABCDEF"
     zigbee_pan_id           = 6754
     zigbee_channel          = 15
     zigbee_expected_pan_id  = 6754
     zigbee_expected_channel = 20
-    homeassistant_onboarding = {
-      password = "a-long-test-password"
-    }
   }
 
   expect_failures = [
-    terraform_data.zigbee_protection_check,
+    terraform_data.zigbee_identity,
   ]
 }
 
@@ -149,14 +169,11 @@ run "homeassistant_owner_seed_uses_a_secret" {
   command = plan
 
   variables {
-    cloudflare_api_token  = "mock-api-token"
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
     kubernetes_namespace  = "domotic-test"
-    generate_zigbee_keys  = true
-    homeassistant_onboarding = {
+    homeassistant_owner = {
       name     = "Home Administrator"
-      password = "a-long-test-password"
       language = "en"
     }
   }
@@ -177,19 +194,14 @@ run "native_restore_disables_owner_seed" {
   command = plan
 
   variables {
-    cloudflare_api_token         = "mock-api-token"
     cloudflare_account_id        = "00000000000000000000000000000000"
     cloudflare_domain            = "example.com"
     kubernetes_namespace         = "domotic-test"
-    generate_zigbee_keys         = true
     homeassistant_bootstrap_mode = "restore"
-    cloudflare_api_token_id      = "00000000000000000000000000000000"
     r2_backup_bucket_name        = "domotic-test-backups"
-    homeassistant_onboarding = {
-      name     = "Home Administrator"
-      username = "admin"
-      password = "a-long-test-password"
-      language = "en"
+    r2_backup_credentials = {
+      access_key_id     = "backup-id"
+      secret_access_key = "backup-secret"
     }
   }
 
@@ -209,14 +221,9 @@ run "remote_custom_components_reach_helm_values" {
   command = plan
 
   variables {
-    cloudflare_api_token  = "mock-api-token"
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
     kubernetes_namespace  = "domotic-test"
-    generate_zigbee_keys  = true
-    homeassistant_onboarding = {
-      password = "a-long-test-password"
-    }
     homeassistant_remote_custom_components = [{
       name         = "example_integration"
       url          = "https://example.invalid/fixture.tar.gz"
@@ -231,6 +238,6 @@ run "remote_custom_components_reach_helm_values" {
       yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].sha256 == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" &&
       yamldecode(output.helm_values_yaml).homeassistant.customComponents.remote[0].archivePath == "fixture/custom_components/example_integration"
     )
-    error_message = "Terraform must pass validated remote custom-component metadata to Helm."
+    error_message = "OpenTofu must pass validated remote custom-component metadata to Helm."
   }
 }

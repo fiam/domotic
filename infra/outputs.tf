@@ -46,12 +46,12 @@ output "local_http_urls" {
 
 output "r2_backup_bucket_name" {
   description = "Name of the private R2 backup bucket, or an empty string when backups are disabled"
-  value       = try(cloudflare_r2_bucket.backups[0].name, "")
+  value       = var.r2_backup_bucket_name == null ? "" : var.r2_backup_bucket_name
 }
 
 output "r2_backup_endpoint" {
   description = "S3-compatible endpoint for the Cloudflare account"
-  value       = var.r2_backup_bucket_name == null ? "" : "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+  value       = var.r2_backup_bucket_name == null ? "" : local.effective_r2_endpoint
 }
 
 # ==============================================================================
@@ -64,7 +64,7 @@ output "helm_values_yaml" {
   value = yamlencode({
     # Zigbee2MQTT configuration
     zigbee2mqtt = {
-      # Reference Terraform-created resources
+      # Reference OpenTofu-created resources
       secretRef = {
         name = kubernetes_secret.zigbee_keys.metadata[0].name
       }
@@ -123,8 +123,8 @@ output "helm_values_yaml" {
       }
       r2Backup = {
         enabled     = var.r2_backup_bucket_name != null && var.homeassistant_bootstrap_mode == "seed"
-        bucket      = try(cloudflare_r2_bucket.backups[0].name, "")
-        endpointUrl = var.r2_backup_bucket_name == null ? "" : "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+        bucket      = var.r2_backup_bucket_name == null ? "" : var.r2_backup_bucket_name
+        endpointUrl = var.r2_backup_bucket_name == null ? "" : local.effective_r2_endpoint
         prefix      = trim(var.homeassistant_r2_backup_prefix, "/")
         existingSecret = {
           name               = try(kubernetes_secret.homeassistant_r2_credentials[0].metadata[0].name, "")
@@ -133,13 +133,20 @@ output "helm_values_yaml" {
         }
         automatic = {
           enabled         = local.homeassistant_automatic_backups_enabled
-          agentName       = try(cloudflare_r2_bucket.backups[0].name, "")
+          agentName       = var.r2_backup_bucket_name == null ? "" : var.r2_backup_bucket_name
           retentionCopies = var.homeassistant_automatic_backups.retention_copies
           time            = var.homeassistant_automatic_backups.time
           existingSecret = {
             name        = try(kubernetes_secret.homeassistant_backup_encryption[0].metadata[0].name, "")
             passwordKey = "password"
           }
+        }
+      }
+      zigbee2mqttBackup = {
+        enabled = true
+        mqtt = {
+          server = local.mqtt_server
+          port   = 1883
         }
       }
     }
@@ -165,4 +172,16 @@ output "helm_install_command" {
       RELEASE_NAME=${var.helm_release_name} \
       NAMESPACE=${var.kubernetes_namespace}
   EOT
+}
+
+output "homeassistant_credentials" {
+  description = "Home Assistant owner credential retained in encrypted state."
+  value       = terraform_data.homeassistant_credentials.output
+  sensitive   = true
+}
+
+output "homeassistant_backup_password" {
+  description = "Generated native backup password, or null when encryption is disabled."
+  value       = try(random_password.homeassistant_backup[0].result, null)
+  sensitive   = true
 }

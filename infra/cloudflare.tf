@@ -9,7 +9,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "_" {
   config_src = "cloudflare"
 }
 
-# Note: This resource cannot be destroyed from Terraform once created.
+# Note: This resource cannot be destroyed from OpenTofu once created.
 # If you need to delete it, you must do so manually via the Cloudflare API/dashboard.
 # This is a known limitation of the Cloudflare provider.
 # The warning during plan/apply is informational and cannot be suppressed.

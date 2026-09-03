@@ -1,0 +1,84 @@
+version: '3'
+
+vars:
+  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default "terraform.tfvars"}}'
+  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE | default "bootstrap.tfstate"}}'
+  CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
+
+tasks:
+  default:
+    desc: List bootstrap tasks
+    cmds:
+      - task --list
+
+  preflight:
+    preconditions:
+      - sh: command -v tofu >/dev/null
+        msg: Install OpenTofu before bootstrapping the deployment.
+      - sh: test -f "{{.BOOTSTRAP_VARS_FILE}}"
+        msg: Configure the requested bootstrap variables file first.
+      - sh: test -n "${TF_VAR_state_passphrase:-}"
+        msg: The OpenTofu state passphrase was not provided.
+      - sh: test -n "${TF_VAR_cloudflare_api_token:-}"
+        msg: The Cloudflare account API token was not provided.
+
+  init:
+    deps: [preflight]
+    cmds:
+      - install -d -m 0700 "$(dirname "{{.BOOTSTRAP_STATE_FILE}}")"
+      - >-
+        tofu init -input=false -reconfigure
+        -backend-config="path={{.BOOTSTRAP_STATE_FILE}}"
+
+  plan:
+    desc: Preview persistent R2 foundation changes
+    cmds:
+      - task: init
+      - tofu plan -input=false -var-file="{{.BOOTSTRAP_VARS_FILE}}"
+
+  apply:
+    desc: Create or update the persistent R2 foundation
+    cmds:
+      - task: init
+      - tofu apply -input=false -var-file="{{.BOOTSTRAP_VARS_FILE}}"
+
+  format:
+    desc: Format bootstrap OpenTofu files
+    cmds:
+      - tofu fmt -recursive
+
+  format-check:
+    desc: Check bootstrap OpenTofu formatting
+    cmds:
+      - tofu fmt -check -recursive
+
+  validate:
+    desc: Validate bootstrap configuration without accessing state
+    cmds:
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu init -backend=false -input=false
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu validate
+
+  test:
+    desc: Run bootstrap OpenTofu tests with a mocked Cloudflare provider
+    cmds:
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu init -backend=false -input=false
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu test
+
+  check:
+    desc: Check bootstrap formatting, configuration, and tests
+    cmds:
+      - task: format-check
+      - task: validate
+      - task: test

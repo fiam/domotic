@@ -178,7 +178,7 @@ tolerations: []
 
 affinity: {}
 
-# Reference to Terraform-created Kubernetes resources
+# Reference to OpenTofu-created Kubernetes resources
 # Secret: Contains sensitive network keys (network_key, ext_pan_id)
 secretRef:
   name: "zigbee-keys"
@@ -199,6 +199,6 @@ config:
     url: "http://zigbee2mqtt.local"
 
 # IMPORTANT: Do NOT configure Zigbee network settings here!
-# All network configuration (pan_id, channel, network_key, ext_pan_id) is managed by Terraform
+# All network configuration (pan_id, channel, network_key, ext_pan_id) is managed by OpenTofu
 # and loaded from the ConfigMap and Secret referenced above.
-# Changing these in Terraform requires force_update_secrets=true as they're PROTECTED.
+# Changing these in OpenTofu requires force_update_secrets=true as they're PROTECTED.

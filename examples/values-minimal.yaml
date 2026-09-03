@@ -2,15 +2,15 @@
 # Minimal Domotic Configuration Example
 # ==============================================================================
 # This is the bare minimum configuration to get started
-# Assumes: Terraform has already created secrets
+# Assumes: OpenTofu has already created secrets
 
 # Zigbee2MQTT Configuration
 zigbee2mqtt:
-  # References to Terraform-created resources
+  # References to OpenTofu-created resources
   secretRef:
-    name: zigbee-keys           # Sensitive keys (from Terraform)
+    name: zigbee-keys           # Sensitive keys (from OpenTofu)
   configMapRef:
-    name: zigbee-network        # Network config (from Terraform)
+    name: zigbee-network        # Network config (from OpenTofu)
 
   config:
     serial:
@@ -22,9 +22,9 @@ zigbee2mqtt:
       port: 1883
 
   # Note: Zigbee network settings (pan_id, channel, network_key, ext_pan_id)
-  # are managed by Terraform and loaded from the Secret/ConfigMap above
+  # are managed by OpenTofu and loaded from the Secret/ConfigMap above
 
-# Home Assistant Configuration  
+# Home Assistant Configuration
 homeassistant:
   config:
     # Reconciled through the Home Assistant API on each seed-mode deployment.
@@ -32,7 +32,7 @@ homeassistant:
     name: "Home"
     external_url: "https://homeassistant.example.com"  # Managed by Cloudflare Tunnel
     internal_url: "http://homeassistant.local"
-    
+
     mqtt:
       server: domotic-mosquitto
       port: 1883
@@ -40,7 +40,7 @@ homeassistant:
 # Cloudflared Tunnel
 cloudflared:
   tunnelTokenSecret:
-    name: cloudflared-tunnel-token  # Created by Terraform
+    name: cloudflared-tunnel-token  # Created by OpenTofu
     key: token
 
 # Mosquitto MQTT Broker

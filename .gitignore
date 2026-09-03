@@ -6,15 +6,17 @@
 /values-*.yaml
 !/examples/values-*.yaml
 
-# Terraform
+# OpenTofu
 *.tfstate
 *.tfstate.*
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
+!/examples/private-deployment/config/bootstrap.tfvars
 !/examples/private-deployment/config/infra/terraform.tfvars
 .terraform/
 .terraform-check/
+.tofu-check/
 infra/helm-values.yaml
 infra/helm-values-*.yaml
 

@@ -51,7 +51,7 @@ From the repository root, use the development Taskfile. It defaults to the
 # Deploy
 task dev:emulator:install
 # or manually:
-kubectl --context=kind-domotic apply -k zstackmulator
+kubectl --context=kind-ha apply -k zstackmulator
 
 # Check status
 task dev:emulator:status
@@ -62,7 +62,7 @@ task dev:emulator:logs
 # Remove
 task dev:emulator:uninstall
 # or manually:
-kubectl --context=kind-domotic delete -k zstackmulator
+kubectl --context=kind-ha delete -k zstackmulator
 ```
 
 The deployment uses the `ghcr.io/astral-sh/uv:debian` image (no custom container needed)

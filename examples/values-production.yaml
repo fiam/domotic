@@ -5,7 +5,7 @@
 
 # Zigbee2MQTT Configuration
 zigbee2mqtt:
-  # Terraform supplies the Secret/ConfigMap references, MQTT endpoint, and
+  # OpenTofu supplies the Secret/ConfigMap references, MQTT endpoint, and
   # local HTTPRoute hostname in infra/helm-values.yaml.
 
   image:
@@ -16,7 +16,7 @@ zigbee2mqtt:
       port: /dev/ttyACM0
       adapter: ember
 
-  # Note: Network settings (pan_id, channel) managed by Terraform
+  # Note: Network settings (pan_id, channel) managed by OpenTofu
   
   persistence:
     enabled: true
@@ -40,7 +40,7 @@ zigbee2mqtt:
 
 # Home Assistant Configuration  
 homeassistant:
-  # Terraform supplies external/internal URLs, MQTT, R2, and the local
+  # OpenTofu supplies external/internal URLs, MQTT, R2, and the local
   # HTTPRoute hostname in infra/helm-values.yaml.
   image:
     tag: "2026.8.3"  # Pin this and test upgrades before production use

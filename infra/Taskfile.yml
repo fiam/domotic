@@ -3,27 +3,17 @@ version: '3'
 vars:
   CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
   RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
-  TERRAFORM_KUBE_CONFIG_PATHS: '{{.KUBECONFIG | default (printf "%s/.kube/config" .HOME)}}'
-  TF_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
-  STATE_NAMESPACE: '{{.STATE_NAMESPACE | default "terraform-state"}}'
   TF_VARS_FILE: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .RESOLVED_CONFIG_DIR)}}'
-  TF_KEYS_FILE: '{{.TF_KEYS_FILE | default (printf "%s/infra/zigbee-keys.tfvars.json" .RESOLVED_CONFIG_DIR)}}'
   HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
   VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
-  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE | default (printf "%s/backup.env" .RESOLVED_CONFIG_DIR)}}'
   HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: '{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE | default ""}}'
-  CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".terraform-check"}}'
+  CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
 
 env:
   CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
-  KUBE_CONFIG_PATHS: '{{.TERRAFORM_KUBE_CONFIG_PATHS}}'
-  KUBE_CTX: '{{.TF_KUBE_CONTEXT}}'
-  KUBE_NAMESPACE: '{{.STATE_NAMESPACE}}'
   TF_VARS_FILE: '{{.TF_VARS_FILE}}'
-  TF_KEYS_FILE: '{{.TF_KEYS_FILE}}'
   HELM_VALUES_FILE: '{{.HELM_VALUES_FILE}}'
   VALUES_FILE: '{{.VALUES_FILE}}'
-  BACKUP_ENV_FILE: '{{.BACKUP_ENV_FILE}}'
 
 tasks:
   default:
@@ -32,37 +22,46 @@ tasks:
       - task --list
 
   preflight:
-    desc: Check Terraform, kubectl, and cluster access
+    desc: Check OpenTofu, kubectl, cluster access, and R2 state settings
     preconditions:
-      - sh: command -v terraform >/dev/null
-        msg: Install Terraform before running infrastructure tasks.
+      - sh: command -v tofu >/dev/null
+        msg: Install OpenTofu before running infrastructure tasks.
       - sh: command -v kubectl >/dev/null
         msg: Install kubectl before running infrastructure tasks.
       - sh: test -f "{{.TF_VARS_FILE}}"
-        msg: Copy terraform.tfvars.example to the requested TF_VARS_FILE and configure it first.
+        msg: Configure the requested OpenTofu variables file first.
+      - sh: test -n "${TF_VAR_state_passphrase:-}"
+        msg: The OpenTofu state passphrase was not provided.
+      - sh: test -n "${CLOUDFLARE_API_TOKEN:-}"
+        msg: The Cloudflare API token was not provided by bootstrap state.
+      - sh: test -n "${DOMOTIC_R2_ENDPOINT:-}"
+        msg: The R2 endpoint was not provided by bootstrap state.
+      - sh: test -n "${DOMOTIC_STATE_BUCKET:-}"
+        msg: The R2 state bucket was not provided by bootstrap state.
+      - sh: test -n "${DOMOTIC_STATE_KEY:-}"
+        msg: The R2 state object key was not provided by bootstrap state.
+      - sh: test -n "${AWS_ACCESS_KEY_ID:-}" && test -n "${AWS_SECRET_ACCESS_KEY:-}"
+        msg: The bucket-scoped R2 state credential was not provided.
     cmds:
-      - >-
-        kubectl
-        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
-        get namespace >/dev/null
+      - kubectl get namespace >/dev/null
 
-  state-namespace:
-    desc: Ensure the Terraform state namespace exists
+  init:
+    desc: Initialize the encrypted OpenTofu backend in Cloudflare R2
     deps: [preflight]
     cmds:
       - >-
-        kubectl
-        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
-        create namespace "{{.STATE_NAMESPACE}}" --dry-run=client -o yaml |
-        kubectl
-        {{if .TF_KUBE_CONTEXT}}--context "{{.TF_KUBE_CONTEXT}}"{{end}}
-        apply -f -
-
-  init:
-    desc: Initialize Terraform and its Kubernetes backend
-    cmds:
-      - task: state-namespace
-      - terraform init -reconfigure
+        tofu init -input=false -reconfigure
+        -backend-config="bucket=${DOMOTIC_STATE_BUCKET}"
+        -backend-config="key=${DOMOTIC_STATE_KEY}"
+        -backend-config="region=auto"
+        -backend-config="endpoints={s3=\"${DOMOTIC_R2_ENDPOINT}\"}"
+        -backend-config="skip_credentials_validation=true"
+        -backend-config="skip_metadata_api_check=true"
+        -backend-config="skip_region_validation=true"
+        -backend-config="skip_requesting_account_id=true"
+        -backend-config="skip_s3_checksum=true"
+        -backend-config="use_path_style=true"
+        -backend-config="use_lockfile=true"
 
   plan:
     desc: Preview infrastructure changes
@@ -75,11 +74,7 @@ tasks:
           seed|restore) bootstrap_mode_arg="-var=homeassistant_bootstrap_mode=$bootstrap_mode" ;;
           *) echo "Invalid Home Assistant bootstrap mode: $bootstrap_mode" >&2; exit 1 ;;
         esac
-        if [ -f "{{.TF_KEYS_FILE}}" ]; then
-          terraform plan -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}" $bootstrap_mode_arg
-        else
-          terraform plan -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
-        fi
+        tofu plan -input=false -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
 
   apply:
     desc: Apply infrastructure changes and refresh Helm values
@@ -92,94 +87,64 @@ tasks:
           seed|restore) bootstrap_mode_arg="-var=homeassistant_bootstrap_mode=$bootstrap_mode" ;;
           *) echo "Invalid Home Assistant bootstrap mode: $bootstrap_mode" >&2; exit 1 ;;
         esac
-        if [ -f "{{.TF_KEYS_FILE}}" ]; then
-          terraform apply -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}" $bootstrap_mode_arg
-        else
-          terraform apply -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
-        fi
-      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
+        tofu apply -input=false -var-file="{{.TF_VARS_FILE}}" $bootstrap_mode_arg
       - task: helm-values
 
   destroy:
-    desc: Destroy Terraform-managed infrastructure
+    desc: Destroy cluster and ordinary Cloudflare infrastructure
     cmds:
       - task: init
-      - |
-        if [ -f "{{.TF_KEYS_FILE}}" ]; then
-          terraform destroy -var-file="{{.TF_VARS_FILE}}" -var-file="{{.TF_KEYS_FILE}}"
-        else
-          terraform destroy -var-file="{{.TF_VARS_FILE}}"
-        fi
-
-  keys:capture:
-    desc: Capture the live Zigbee identity as an ignored Terraform variable file
-    cmds:
-      - task: init
-      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
-
-  keys:import:
-    desc: Import a portable Zigbee identity file or restored backup directory
-    requires:
-      vars: [SOURCE]
-    cmds:
-      - ../scripts/zigbee-keys.sh import "{{.SOURCE}}" "{{.TF_KEYS_FILE}}"
+      - tofu destroy -input=false -var-file="{{.TF_VARS_FILE}}"
 
   helm-values:
-    desc: Write Terraform outputs consumed by the Helm chart
+    desc: Write OpenTofu outputs consumed by the Helm chart
     cmds:
       - |
         install -d -m 0700 "$(dirname "{{.HELM_VALUES_FILE}}")"
         umask 077
-        terraform output -raw helm_values_yaml > "{{.HELM_VALUES_FILE}}"
+        tofu output -raw helm_values_yaml > "{{.HELM_VALUES_FILE}}"
 
   outputs:
-    desc: Show Terraform outputs
+    desc: Show non-sensitive OpenTofu outputs
     cmds:
-      - terraform output {{.CLI_ARGS}}
-
-  backup:
-    desc: Encrypt configuration and state, then upload them to Cloudflare R2
-    cmds:
-      - task: init
-      - ../scripts/zigbee-keys.sh capture "{{.TF_KEYS_FILE}}"
-      - ../scripts/r2-backup.sh backup
-
-  backup-list:
-    desc: List encrypted backups in Cloudflare R2
-    cmds:
-      - ../scripts/r2-backup.sh list
-
-  backup-restore:
-    desc: Download and decrypt a backup without overwriting active files
-    requires:
-      vars: [OBJECT]
-    cmds:
-      - ../scripts/r2-backup.sh restore "{{.OBJECT}}"
+      - tofu output {{.CLI_ARGS}}
 
   format:
-    desc: Format Terraform files
+    desc: Format OpenTofu files
     cmds:
-      - terraform fmt -recursive
+      - tofu fmt -recursive
 
   format-check:
-    desc: Check Terraform formatting
+    desc: Check OpenTofu formatting
     cmds:
-      - terraform fmt -check -recursive
+      - tofu fmt -check -recursive
 
   validate:
-    desc: Validate Terraform configuration without accessing remote state
+    desc: Validate OpenTofu configuration without accessing remote state
     cmds:
-      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform init -backend=false -input=false
-      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform validate
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu init -backend=false -input=false
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu validate
 
   test:
-    desc: Run Terraform tests with mocked external providers
+    desc: Run OpenTofu tests with mocked external providers
     cmds:
-      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform init -backend=false -input=false
-      - TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}" terraform test
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu init -backend=false -input=false
+      - >-
+        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_DATA_DIR="{{.CHECK_TF_DATA_DIR}}"
+        tofu test
 
   check:
-    desc: Check Terraform formatting, configuration, and tests
+    desc: Check OpenTofu formatting, configuration, and tests
     cmds:
       - task: format-check
       - task: validate

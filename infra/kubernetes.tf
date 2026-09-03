@@ -3,7 +3,7 @@ resource "kubernetes_namespace" "domotic" {
     name = var.kubernetes_namespace
 
     labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app.kubernetes.io/managed-by" = "opentofu"
       "name"                         = var.kubernetes_namespace
     }
   }
@@ -16,7 +16,7 @@ resource "kubernetes_secret" "cloudflared_tunnel_token_secret" {
     namespace = var.kubernetes_namespace
 
     labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app.kubernetes.io/managed-by" = "opentofu"
       "app.kubernetes.io/component"  = "cloudflared"
     }
 
@@ -32,27 +32,33 @@ resource "kubernetes_secret" "cloudflared_tunnel_token_secret" {
   type = "Opaque"
 }
 
-resource "terraform_data" "homeassistant_seed_check" {
-  input = var.homeassistant_bootstrap_mode
+resource "random_password" "homeassistant_admin" {
+  length  = 32
+  special = false
+}
 
+resource "terraform_data" "homeassistant_credentials" {
+  input = {
+    username = coalesce(
+      var.homeassistant_admin_username_override,
+      var.homeassistant_owner.username
+    )
+    password = coalesce(
+      var.homeassistant_admin_password_override,
+      random_password.homeassistant_admin.result
+    )
+  }
+
+  # Home Assistant owns password changes after onboarding. An explicit
+  # credentials:update task replaces this resource when the operator needs to
+  # record a changed or restored owner password.
   lifecycle {
-    precondition {
-      condition = (
-        var.homeassistant_bootstrap_mode != "seed" ||
-        nonsensitive(var.homeassistant_onboarding != null)
-      )
-      error_message = "homeassistant_onboarding with an admin password is required when homeassistant_bootstrap_mode is seed. Use restore mode for manual onboarding or native backup recovery."
-    }
+    ignore_changes = [input]
   }
 }
 
 resource "kubernetes_secret" "homeassistant_onboarding" {
-  # Only the presence of the sensitive object is declassified for resource
-  # cardinality; none of its fields are exposed.
-  count = (
-    var.homeassistant_bootstrap_mode == "seed" &&
-    nonsensitive(var.homeassistant_onboarding != null)
-  ) ? 1 : 0
+  count = var.homeassistant_bootstrap_mode == "seed" ? 1 : 0
 
   depends_on = [kubernetes_namespace.domotic]
 
@@ -61,16 +67,16 @@ resource "kubernetes_secret" "homeassistant_onboarding" {
     namespace = var.kubernetes_namespace
 
     labels = {
-      "app.kubernetes.io/managed-by" = "terraform"
+      "app.kubernetes.io/managed-by" = "opentofu"
       "app.kubernetes.io/component"  = "homeassistant-onboarding"
     }
   }
 
   data = {
-    name     = try(var.homeassistant_onboarding.name, "Home Administrator")
-    username = try(var.homeassistant_onboarding.username, "admin")
-    password = try(var.homeassistant_onboarding.password, "")
-    language = try(var.homeassistant_onboarding.language, "en")
+    name     = var.homeassistant_owner.name
+    username = terraform_data.homeassistant_credentials.output.username
+    password = terraform_data.homeassistant_credentials.output.password
+    language = var.homeassistant_owner.language
   }
 
   type = "Opaque"

@@ -2,7 +2,7 @@ version: '3'
 
 vars:
   # Upgrade by changing this one reviewed commit SHA, then run task check,
-  # task backup, task plan, and task deploy in that order.
+  # task plan, and task deploy in that order.
   DOMOTIC_REF: REPLACE_WITH_FULL_COMMIT_SHA
 
 includes:
@@ -12,7 +12,7 @@ includes:
     vars:
       PRIVATE_ROOT: '{{.ROOT_DIR}}'
       CONFIG_DIR: '{{.ROOT_DIR}}/config'
-      SECRETS_FILE: '{{.ROOT_DIR}}/config/secrets.sops.yaml'
-      STATE_NAMESPACE: terraform-state
+      BOOTSTRAP_VARS_FILE: '{{.ROOT_DIR}}/config/bootstrap.tfvars'
+      BOOTSTRAP_STATE_FILE: '{{.ROOT_DIR}}/state/bootstrap.tfstate'
       RELEASE_NAME: domotic
       NAMESPACE: domotic

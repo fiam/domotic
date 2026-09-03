@@ -1,0 +1,11 @@
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+
+# Use a different prefix for every Domotic installation in this Cloudflare
+# account. This creates <prefix>-state and <prefix>-backups.
+r2_bucket_prefix = "my-home"
+
+# Optional best-effort placement. Both buckets use the same location.
+# r2_location = "weur"
+
+# Optional data residency jurisdiction. This also changes the R2 endpoint.
+# r2_jurisdiction = "eu"

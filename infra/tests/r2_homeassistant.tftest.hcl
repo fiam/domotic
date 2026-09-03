@@ -29,54 +29,48 @@ mock_provider "random" {
 
   mock_resource "random_id" {
     defaults = {
-      hex = "0123456789ABCDEF"
+      hex = "0123456789abcdef"
     }
   }
 }
 
 run "r2_credentials_are_derived_for_homeassistant" {
   # A plan is sufficient because every asserted value is known before apply.
-  # It also avoids Terraform trying to tear down the deliberately protected
+  # It also avoids OpenTofu trying to tear down the deliberately protected
   # mock R2 bucket after the test.
   command = plan
 
   variables {
-    cloudflare_api_token          = "mock-account-api-token"
-    cloudflare_api_token_id       = "0123456789abcdef0123456789abcdef"
-    cloudflare_account_id         = "00000000000000000000000000000000"
-    cloudflare_domain             = "example.com"
-    kubernetes_namespace          = "domotic-test"
-    generate_zigbee_keys          = true
-    r2_backup_bucket_name         = "domotic-test-backups"
-    r2_backup_location            = "weur"
-    homeassistant_backup_password = "test-native-backup-password"
-    homeassistant_onboarding = {
-      name     = "Home Administrator"
-      username = "admin"
-      password = "a-long-test-password"
-      language = "en"
+    cloudflare_account_id                   = "00000000000000000000000000000000"
+    cloudflare_domain                       = "example.com"
+    kubernetes_namespace                    = "domotic-test"
+    r2_backup_bucket_name                   = "domotic-test-backups"
+    homeassistant_backup_encryption_enabled = true
+    r2_backup_credentials = {
+      access_key_id     = "backup-id"
+      secret_access_key = "backup-secret"
     }
   }
 
   assert {
     condition = (
       nonsensitive(kubernetes_secret.homeassistant_r2_credentials[0].data["access_key_id"]) ==
-      "0123456789abcdef0123456789abcdef"
+      "backup-id"
     )
-    error_message = "The R2 access key must be the account API token ID."
+    error_message = "Home Assistant must receive the bucket-scoped R2 access key."
   }
 
   assert {
     condition = (
       nonsensitive(kubernetes_secret.homeassistant_r2_credentials[0].data["secret_access_key"]) ==
-      sha256("mock-account-api-token")
+      "backup-secret"
     )
-    error_message = "The R2 secret access key must be the SHA-256 hash of the account API token."
+    error_message = "Home Assistant must receive the bucket-scoped R2 secret."
   }
 
   assert {
     condition     = strcontains(output.helm_values_yaml, "homeassistant-r2-credentials")
-    error_message = "Generated Helm values must reference Terraform's R2 credentials Secret."
+    error_message = "Generated Helm values must reference OpenTofu's R2 credentials Secret."
   }
 
   assert {
@@ -94,9 +88,9 @@ run "r2_credentials_are_derived_for_homeassistant" {
   assert {
     condition = (
       nonsensitive(kubernetes_secret.homeassistant_backup_encryption[0].data["password"]) ==
-      "test-native-backup-password"
+      "0123456789ABCDEF0123456789ABCDEF"
     )
-    error_message = "Terraform must store the configured native backup password."
+    error_message = "OpenTofu must generate and store the native backup password."
   }
 }
 
@@ -104,25 +98,19 @@ run "r2_backups_are_unencrypted_without_a_password" {
   command = plan
 
   variables {
-    cloudflare_api_token    = "mock-account-api-token"
-    cloudflare_api_token_id = "0123456789abcdef0123456789abcdef"
-    cloudflare_account_id   = "00000000000000000000000000000000"
-    cloudflare_domain       = "example.com"
-    kubernetes_namespace    = "domotic-test"
-    generate_zigbee_keys    = true
-    r2_backup_bucket_name   = "domotic-test-backups"
-    r2_backup_location      = "weur"
-    homeassistant_onboarding = {
-      name     = "Home Administrator"
-      username = "admin"
-      password = "a-long-test-password"
-      language = "en"
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "domotic-test"
+    r2_backup_bucket_name = "domotic-test-backups"
+    r2_backup_credentials = {
+      access_key_id     = "backup-id"
+      secret_access_key = "backup-secret"
     }
   }
 
   assert {
     condition     = length(kubernetes_secret.homeassistant_backup_encryption) == 0
-    error_message = "Terraform must not create a backup password Secret when no password is configured."
+    error_message = "OpenTofu must not create a backup password Secret when no password is configured."
   }
 
   assert {

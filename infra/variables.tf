@@ -1,21 +1,7 @@
-variable "cloudflare_api_token" {
+variable "state_passphrase" {
+  description = "Passphrase used by OpenTofu to encrypt state and plan files."
   type        = string
-  description = "Cloudflare API token with the necessary permissions for managed resources."
   sensitive   = true
-}
-
-variable "cloudflare_api_token_id" {
-  type        = string
-  description = "Identifier of the account API token. Required when R2 backups are enabled so Terraform can derive S3 credentials from the same token."
-  default     = null
-
-  validation {
-    condition = (
-      var.cloudflare_api_token_id == null ||
-      can(regex("^[0-9a-f]{32}$", var.cloudflare_api_token_id))
-    )
-    error_message = "Cloudflare account API token ID must be 32 lowercase hexadecimal characters."
-  }
 }
 
 variable "cloudflare_account_id" {
@@ -104,7 +90,7 @@ locals {
 # ==============================================================================
 
 variable "homeassistant_bootstrap_mode" {
-  description = "First-boot behavior: seed requires admin credentials and initializes chart defaults and integrations; restore starts only the native Home Assistant backup recovery flow and preserves restored configuration."
+  description = "First-boot behavior: seed initializes the owner, chart defaults, and integrations; restore starts only the native Home Assistant backup recovery flow and preserves restored configuration."
   type        = string
   default     = "seed"
 
@@ -114,28 +100,60 @@ variable "homeassistant_bootstrap_mode" {
   }
 }
 
-variable "homeassistant_onboarding" {
-  description = "Owner account required in seed mode to authenticate Home Assistant API bootstrap. The username defaults to admin; existing completed onboarding is never overwritten."
+variable "homeassistant_owner" {
+  description = "Non-secret profile for the Home Assistant owner created during seed mode."
   type = object({
     name     = optional(string, "Home Administrator")
     username = optional(string, "admin")
-    password = string
     language = optional(string, "en")
   })
-  default   = null
-  sensitive = true
+  default = {}
 
   validation {
-    condition = var.homeassistant_onboarding == null || (
-      length(trimspace(var.homeassistant_onboarding.name)) > 0 &&
-      var.homeassistant_onboarding.username == lower(trimspace(var.homeassistant_onboarding.username)) &&
-      length(regexall("\\s", var.homeassistant_onboarding.username)) == 0 &&
-      length(var.homeassistant_onboarding.username) > 0 &&
-      length(var.homeassistant_onboarding.password) >= 6 &&
-      length(var.homeassistant_onboarding.password) <= 72 &&
-      can(regex("^[a-z]{2}(-[A-Z]{2})?$", var.homeassistant_onboarding.language))
+    condition = (
+      length(trimspace(var.homeassistant_owner.name)) > 0 &&
+      var.homeassistant_owner.username == lower(trimspace(var.homeassistant_owner.username)) &&
+      length(regexall("\\s", var.homeassistant_owner.username)) == 0 &&
+      length(var.homeassistant_owner.username) > 0 &&
+      can(regex("^[a-z]{2}(-[A-Z]{2})?$", var.homeassistant_owner.language))
     )
-    error_message = "Home Assistant onboarding requires a name, a lowercase username without whitespace, a 6-72 character password, and a language such as en or en-GB."
+    error_message = "Home Assistant owner requires a name, a lowercase username without whitespace, and a language such as en or en-GB."
+  }
+}
+
+variable "homeassistant_admin_password_override" {
+  description = "One-time owner password used only when explicitly replacing the credential retained in encrypted state."
+  type        = string
+  default     = null
+  sensitive   = true
+
+  validation {
+    condition = (
+      var.homeassistant_admin_password_override == null ||
+      (
+        length(var.homeassistant_admin_password_override) >= 6 &&
+        length(var.homeassistant_admin_password_override) <= 72
+      )
+    )
+    error_message = "The Home Assistant owner password must contain 6-72 characters."
+  }
+}
+
+variable "homeassistant_admin_username_override" {
+  description = "One-time owner username used with an explicit credential replacement."
+  type        = string
+  default     = null
+
+  validation {
+    condition = (
+      var.homeassistant_admin_username_override == null ||
+      (
+        var.homeassistant_admin_username_override == lower(trimspace(var.homeassistant_admin_username_override)) &&
+        length(regexall("\\s", var.homeassistant_admin_username_override)) == 0 &&
+        length(var.homeassistant_admin_username_override) > 0
+      )
+    )
+    error_message = "The replacement Home Assistant username must be lowercase and contain no whitespace."
   }
 }
 
@@ -172,7 +190,7 @@ variable "homeassistant_remote_custom_components" {
 # ==============================================================================
 
 variable "r2_backup_bucket_name" {
-  description = "Private Cloudflare R2 bucket for encrypted backups. Set to null to disable R2 backups."
+  description = "Private R2 bucket prepared by the bootstrap stack for Home Assistant backups."
   type        = string
   default     = null
 
@@ -185,18 +203,35 @@ variable "r2_backup_bucket_name" {
   }
 }
 
-variable "r2_backup_location" {
-  description = "Optional R2 location hint such as weur. This is best-effort and only used when creating the bucket."
+variable "r2_backup_credentials" {
+  description = "Bucket-scoped S3 credentials created by the bootstrap stack."
+  type = object({
+    access_key_id     = string
+    secret_access_key = string
+  })
+  default   = null
+  sensitive = true
+}
+
+variable "r2_endpoint" {
+  description = "S3-compatible R2 endpoint supplied by the bootstrap stack."
   type        = string
   default     = null
 
   validation {
     condition = (
-      var.r2_backup_location == null ||
-      contains(["apac", "eeur", "enam", "weur", "wnam", "oc"], var.r2_backup_location)
+      var.r2_endpoint == null ||
+      can(regex("^https://[0-9a-f]{32}(?:\\.(?:eu|us|fedramp))?\\.r2\\.cloudflarestorage\\.com$", var.r2_endpoint))
     )
-    error_message = "R2 backup location must be one of apac, eeur, enam, weur, wnam, or oc."
+    error_message = "The R2 endpoint must be the account's Cloudflare R2 HTTPS endpoint."
   }
+}
+
+locals {
+  effective_r2_endpoint = coalesce(
+    var.r2_endpoint,
+    "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+  )
 }
 
 variable "homeassistant_r2_backup_prefix" {
@@ -239,36 +274,18 @@ variable "homeassistant_automatic_backups" {
   }
 }
 
-variable "homeassistant_backup_password" {
-  description = "Optional password used when seed mode initializes encrypted native Home Assistant backups. Omit it to initialize unencrypted backups."
-  type        = string
-  default     = null
-  sensitive   = true
-
-  validation {
-    condition = (
-      var.homeassistant_backup_password == null ||
-      (
-        length(var.homeassistant_backup_password) >= 16 &&
-        length(var.homeassistant_backup_password) <= 128
-      )
-    )
-    error_message = "The Home Assistant backup password must contain 16-128 characters."
-  }
+variable "homeassistant_backup_encryption_enabled" {
+  description = "Generate and retain a password for encrypted native Home Assistant backups."
+  type        = bool
+  default     = false
 }
 
 # ==============================================================================
 # Zigbee Configuration
 # ==============================================================================
 
-variable "generate_zigbee_keys" {
-  description = "Generate new Zigbee keys. Only use on first setup!"
-  type        = bool
-  default     = false
-}
-
 variable "zigbee_network_key" {
-  description = "Zigbee network encryption key (32 hex chars). Required unless generate_zigbee_keys=true."
+  description = "One-time Zigbee network key override used when explicitly importing an identity."
   type        = string
   sensitive   = true
   default     = null
@@ -280,7 +297,7 @@ variable "zigbee_network_key" {
 }
 
 variable "zigbee_ext_pan_id" {
-  description = "Zigbee extended PAN ID (16 hex chars). Required unless generate_zigbee_keys=true."
+  description = "One-time Zigbee extended PAN ID override used when explicitly importing an identity."
   type        = string
   default     = null
 

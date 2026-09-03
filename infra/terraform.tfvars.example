@@ -7,24 +7,8 @@
 # Cloudflare Configuration
 # ==============================================================================
 
-# Create an account-owned token under Manage Account > Account API Tokens.
-# Required policies:
-#   - Entire Account / Cloudflare One Connector: cloudflared / Edit
-#   - Specified Domains / Zone / Read
-#   - Specified Domains / DNS / Edit
-# Add Entire Account / Workers R2 Storage / Read and Write when enabling R2.
-# The private remote-Taskfile workflow injects this from its selected secret
-# provider instead of storing the assignment in terraform.tfvars.
-cloudflare_api_token = "<your-cloudflare-api-token>"
-
-# The token's 32-character ID, not its cfat_ secret. Required only for R2.
-# Obtain it after creating the token:
-#   curl -fsS "https://api.cloudflare.com/client/v4/accounts/<account-id>/tokens/verify" \
-#     -H "Authorization: Bearer <token>" | jq -r .result.id
-# cloudflare_api_token_id = "<your-account-api-token-id>"
-
-# Your Cloudflare account ID (found in dashboard)
-cloudflare_account_id = "<your-account-id>"
+# The account ID and Cloudflare token are loaded from encrypted bootstrap
+# state. Never put either credential or the state passphrase in this file.
 
 # Domain managed by Cloudflare
 cloudflare_domain = "example.com"
@@ -54,16 +38,13 @@ local_http_hostnames = {
 # Assistant can present Upload backup; the restored /config then takes over.
 homeassistant_bootstrap_mode = "seed" # or "restore"
 
-# Seed mode requires an admin password so Helm can authenticate every
-# chart-derived Home Assistant setting. The name, username, and language
-# default to "Home Administrator", "admin", and "en". Terraform stores the
-# values in a Kubernetes Secret; existing users are never overwritten. Use
-# restore mode instead when onboarding manually or importing a native backup.
-# The private remote-Taskfile workflow injects this object from its selected
-# secret provider instead of storing the assignment in terraform.tfvars.
-homeassistant_onboarding = {
-  password = "replace-with-a-long-unique-password"
-}
+# OpenTofu generates the initial owner password and retains it in encrypted
+# state. These optional profile fields are not secret.
+# homeassistant_owner = {
+#   name     = "Home Administrator"
+#   username = "admin"
+#   language = "en"
+# }
 
 # Optional custom integrations selected by this deployment. Use a public,
 # immutable repository or release tar.gz and verify its digest independently.
@@ -79,14 +60,11 @@ homeassistant_onboarding = {
 # }]
 
 # ==============================================================================
-# Encrypted R2 Backups (Optional)
+# Home Assistant backups
 # ==============================================================================
 
-# The Cloudflare API token above also needs Account / Workers R2 Storage Read
-# and Write.
-# Bucket names are unique within your Cloudflare account.
-# r2_backup_bucket_name = "domotic-backups"
-# r2_backup_location    = "weur"
+# Bootstrap creates the dedicated backup bucket and supplies its scoped
+# credential automatically.
 # homeassistant_r2_backup_prefix = "home-assistant"
 
 # With an R2 bucket, seed mode configures daily R2 backups automatically and
@@ -99,9 +77,9 @@ homeassistant_onboarding = {
 #   time             = null # or "03:30:00"
 # }
 
-# Backups are unencrypted when this is omitted. Set a strong, unique value to
-# encrypt them, and keep the same value available for disaster recovery.
-# homeassistant_backup_password = "replace-with-a-strong-backup-password"
+# Native backups are unencrypted by default. When enabled, OpenTofu generates
+# the backup password and retains it in encrypted state.
+# homeassistant_backup_encryption_enabled = true
 
 # ==============================================================================
 # Kubernetes Configuration
@@ -117,13 +95,9 @@ helm_release_name = "domotic"
 # Zigbee Configuration
 # ==============================================================================
 
-# Generate keys on the first apply. The apply task immediately captures them in
-# the ignored, mode-0600 zigbee-keys.tfvars.json file. Subsequent Task runs load
-# that file after this one, where it disables generation and supplies the keys.
-generate_zigbee_keys = true
-
-# For a migration, import a previously backed-up key file before applying:
-#   task keys:import SOURCE=/path/to/zigbee-keys.tfvars.json
+# OpenTofu generates the network key and extended PAN ID and retains them in
+# encrypted state. Use the documented Zigbee import task before the first
+# deployment when adopting an existing network.
 # Do not put real keys in this main configuration file.
 
 # Network settings - PROTECTED (changing breaks paired devices)
