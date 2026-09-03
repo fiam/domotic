@@ -217,13 +217,20 @@ mv "$private_root/state/bootstrap.tfstate.bak" "$private_root/state/bootstrap.tf
 # Materialize a Git revision with the current remote entrypoint and scaffold.
 fixture_repository="$temp_root/source-repository"
 git clone --quiet "$repository_root" "$fixture_repository"
-git -C "$repository_root" diff --binary HEAD -- \
+if ! git -C "$repository_root" diff --quiet HEAD -- \
   Taskfile.yml \
   Taskfile.remote.yml \
   examples/private-deployment \
   scripts/config-check.sh \
-  scripts/tests/private-deployment.sh |
-  git -C "$fixture_repository" apply -
+  scripts/tests/private-deployment.sh; then
+  git -C "$repository_root" diff --binary HEAD -- \
+    Taskfile.yml \
+    Taskfile.remote.yml \
+    examples/private-deployment \
+    scripts/config-check.sh \
+    scripts/tests/private-deployment.sh |
+    git -C "$fixture_repository" apply -
+fi
 cp "$repository_root/examples/private-deployment/.opentofu-version" \
   "$fixture_repository/examples/private-deployment/.opentofu-version"
 cp "$repository_root/examples/private-deployment/config/bootstrap.tfvars" \
