@@ -164,9 +164,9 @@ Run these from the private repository:
 
 ## Backups and restore
 
-Home Assistant can write encrypted native backups to R2. A separate repository
-backup preserves Terraform state, the Zigbee identity, and Kubernetes recovery
-secrets:
+Home Assistant can write native backups, optionally encrypted, to a private R2
+bucket. A separate repository backup preserves Terraform state, the Zigbee
+identity, and Kubernetes recovery secrets:
 
 ```sh
 cp config/backup.env.example config/backup.env

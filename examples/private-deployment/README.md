@@ -28,8 +28,10 @@ git add config/secrets.sops.yaml
 ```
 
 The encrypted document must contain `CLOUDFLARE_API_TOKEN` and
-`HOMEASSISTANT_ADMIN_PASSWORD`. Keep `config/secrets.sops.yaml` under version
-control and keep the SOPS master key elsewhere.
+`HOMEASSISTANT_ADMIN_PASSWORD`. `HOMEASSISTANT_BACKUP_PASSWORD` is optional;
+omit it for unencrypted backups in the private R2 bucket, or set it to enable
+Home Assistant's native backup encryption. Keep `config/secrets.sops.yaml`
+under version control and keep the SOPS master key elsewhere.
 
 Start with:
 

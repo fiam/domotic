@@ -16,8 +16,8 @@ The archive contains:
 - the live `zigbee-keys` Secret and `zigbee-network` ConfigMap;
 - the live `cloudflared-tunnel-token` Secret;
 - the live `homeassistant-r2-credentials` Secret when R2 is enabled;
-- the native `homeassistant-backup-encryption` recovery Secret when R2 is
-  enabled;
+- the native `homeassistant-backup-encryption` recovery Secret when native
+  backup encryption is enabled;
 - the seed-mode `homeassistant-onboarding` Secret when present; and
 - a manifest with the backup timestamp and source cluster context.
 
@@ -120,11 +120,16 @@ separate bucket-scoped R2 token only if you later want stronger isolation.
 
 Seed mode requires `homeassistant_onboarding` and uses that owner's temporary
 authenticated session to initialize automatic backups. The defaults are one
-encrypted backup every day, the R2 bucket as the only location, seven retained
-copies, and Home Assistant's randomized early-morning start time. Terraform
-generates a distinct 32-character encryption password and stores it in the
-`homeassistant-backup-encryption` Secret. The hook marks the backup setup as
-configured only after the matching R2 agent is available.
+unencrypted backup every day, the private R2 bucket as the only location,
+seven retained copies, and Home Assistant's randomized early-morning start
+time. The hook marks the backup setup as configured only after the matching R2
+agent is available.
+
+Private deployments can optionally set `HOMEASSISTANT_BACKUP_PASSWORD` in
+`config/secrets.sops.yaml`. The deployment wrapper passes it to Terraform as
+the `homeassistant_backup_password` override and Terraform stores it in the
+`homeassistant-backup-encryption` Secret. If it is omitted, the hook configures
+the R2 destination as unprotected and passes no password to Home Assistant.
 
 Override the first-boot defaults when needed:
 
@@ -145,10 +150,10 @@ Existing integration entries and native restores are never modified. When
 switching a restored installation back to seed mode, provide credentials for
 an existing restored owner so the hook can preserve or initialize the schedule.
 
-For a schedule initialized by this hook, preserve the generated recovery
+For an encrypted schedule initialized by this hook, preserve the recovery
 password outside the cluster. The repository backup task includes its Secret
-and Terraform state inside the separate age-encrypted archive. You can also
-copy it directly into a password manager:
+inside the separate age-encrypted archive. You can also copy it directly into
+a password manager:
 
 ```sh
 kubectl -n domotic \
@@ -162,9 +167,11 @@ Home Assistant's Cloudflare R2 integration requires Home Assistant 2026.2 or
 newer.
 
 If Home Assistant already has backup settings, the hook preserves them and
-does not replace their password. In that case, the existing Home Assistant
-emergency-kit key remains authoritative and may differ from the Terraform
-Secret. Store that existing key separately before relying on those backups.
+does not replace their encryption setting or password. Adding or removing
+`HOMEASSISTANT_BACKUP_PASSWORD` later therefore does not rewrite an existing
+schedule; make that change under **Settings > System > Backups**. For an
+encrypted schedule, its existing Home Assistant emergency-kit key remains
+authoritative and may differ from the Terraform Secret.
 
 The chart detects a matching **Cloudflare R2** config entry and preserves it.
 It creates only a missing entry, through Home Assistant's own validated config

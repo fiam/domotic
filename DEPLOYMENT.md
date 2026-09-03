@@ -363,21 +363,22 @@ curl --fail --show-error --head http://zigbee2mqtt.local
 Do not use `examples/values-kind.yaml` on k3s; it connects Zigbee2MQTT to the
 development-only coordinator emulator.
 
-## 7. Configure encrypted off-host backups
+## 7. Configure off-host backups
 
 When R2 is enabled before the first Helm deployment, Terraform creates the
 bucket and derived S3 credential Secret. In seed mode, the chart creates Home
 Assistant's official Cloudflare R2 backup location through its validated config
-flow, then configures daily encrypted backups to that bucket and retains seven
-copies by default. Set `homeassistant_automatic_backups` in the Terraform
-variables to change the initial retention/time or disable scheduling. Existing
-integration entries, backup settings, and native restores are preserved.
+flow, then configures daily backups to that private bucket and retains seven
+copies by default. Set `homeassistant_backup_password` to enable native backup
+encryption. Set `homeassistant_automatic_backups` to change the initial
+retention/time or disable scheduling. Existing integration entries, backup
+settings, and native restores are preserved.
 
-For a newly initialized schedule, copy the generated
-`homeassistant-backup-encryption` password into a password manager before
-relying on native backups. A preserved existing schedule keeps its existing
-Home Assistant emergency-kit key instead. The retrieval command and recovery
-details are in [BACKUP.md](BACKUP.md#3-configure-home-assistant-backups).
+For a newly initialized encrypted schedule, preserve the configured password
+and download Home Assistant's emergency kit before relying on native backups.
+A preserved existing schedule keeps its existing Home Assistant emergency-kit
+key instead. Recovery details are in
+[BACKUP.md](BACKUP.md#3-configure-home-assistant-backups).
 
 Configure the age identity and local `backup.env` described in
 [BACKUP.md](BACKUP.md), then create and verify the separate encrypted

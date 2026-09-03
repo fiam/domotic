@@ -99,13 +99,14 @@ list in private Helm values instead. See
 [the custom integration guide](../CUSTOM_INTEGRATIONS.md) for both forms.
 
 When an R2 bucket is configured in seed mode, that same temporary admin session
-initializes daily encrypted backups to the R2 agent with seven-copy retention.
-Terraform generates the distinct recovery password in
-`homeassistant-backup-encryption` for that initialization.
+initializes daily backups to the R2 agent with seven-copy retention. They are
+unencrypted unless `homeassistant_backup_password` is set; when it is,
+Terraform creates `homeassistant-backup-encryption` for that initialization.
 `homeassistant_automatic_backups` can change the first-boot retention/time or
 disable the schedule; after initialization, Home Assistant owns the settings
 and later UI changes are preserved. An existing schedule retains its existing
-emergency-kit key, which may differ from the Terraform Secret.
+protection setting and, when encrypted, its emergency-kit key may differ from
+the Terraform Secret.
 
 Use `homeassistant_bootstrap_mode="restore"` before deploying onto a blank
 volume that will receive a native Home Assistant backup. The chart creates only

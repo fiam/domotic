@@ -41,14 +41,15 @@ run "r2_credentials_are_derived_for_homeassistant" {
   command = plan
 
   variables {
-    cloudflare_api_token    = "mock-account-api-token"
-    cloudflare_api_token_id = "0123456789abcdef0123456789abcdef"
-    cloudflare_account_id   = "00000000000000000000000000000000"
-    cloudflare_domain       = "example.com"
-    kubernetes_namespace    = "domotic-test"
-    generate_zigbee_keys    = true
-    r2_backup_bucket_name   = "domotic-test-backups"
-    r2_backup_location      = "weur"
+    cloudflare_api_token          = "mock-account-api-token"
+    cloudflare_api_token_id       = "0123456789abcdef0123456789abcdef"
+    cloudflare_account_id         = "00000000000000000000000000000000"
+    cloudflare_domain             = "example.com"
+    kubernetes_namespace          = "domotic-test"
+    generate_zigbee_keys          = true
+    r2_backup_bucket_name         = "domotic-test-backups"
+    r2_backup_location            = "weur"
+    homeassistant_backup_password = "test-native-backup-password"
     homeassistant_onboarding = {
       name     = "Home Administrator"
       username = "admin"
@@ -87,11 +88,48 @@ run "r2_credentials_are_derived_for_homeassistant" {
       yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.existingSecret.name ==
       "homeassistant-backup-encryption"
     )
-    error_message = "Seed mode must enable daily R2 backups with the generated encryption Secret."
+    error_message = "Seed mode must enable encrypted daily R2 backups when a password is configured."
   }
 
   assert {
-    condition     = random_password.homeassistant_backup[0].length == 32
-    error_message = "Terraform must generate a distinct native backup password."
+    condition = (
+      nonsensitive(kubernetes_secret.homeassistant_backup_encryption[0].data["password"]) ==
+      "test-native-backup-password"
+    )
+    error_message = "Terraform must store the configured native backup password."
+  }
+}
+
+run "r2_backups_are_unencrypted_without_a_password" {
+  command = plan
+
+  variables {
+    cloudflare_api_token    = "mock-account-api-token"
+    cloudflare_api_token_id = "0123456789abcdef0123456789abcdef"
+    cloudflare_account_id   = "00000000000000000000000000000000"
+    cloudflare_domain       = "example.com"
+    kubernetes_namespace    = "domotic-test"
+    generate_zigbee_keys    = true
+    r2_backup_bucket_name   = "domotic-test-backups"
+    r2_backup_location      = "weur"
+    homeassistant_onboarding = {
+      name     = "Home Administrator"
+      username = "admin"
+      password = "a-long-test-password"
+      language = "en"
+    }
+  }
+
+  assert {
+    condition     = length(kubernetes_secret.homeassistant_backup_encryption) == 0
+    error_message = "Terraform must not create a backup password Secret when no password is configured."
+  }
+
+  assert {
+    condition = (
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.enabled &&
+      yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.existingSecret.name == ""
+    )
+    error_message = "Automatic R2 backups must remain enabled without an encryption Secret."
   }
 }

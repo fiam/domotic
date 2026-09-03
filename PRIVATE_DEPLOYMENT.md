@@ -79,6 +79,17 @@ CLOUDFLARE_API_TOKEN: your-account-api-token
 HOMEASSISTANT_ADMIN_PASSWORD: your-initial-owner-password
 ```
 
+You may also choose the password used to encrypt native Home Assistant backups:
+
+```yaml
+HOMEASSISTANT_BACKUP_PASSWORD: your-native-backup-password
+```
+
+This third value is optional. When it is absent, a new automatic backup setup
+stores unencrypted backups in the private R2 bucket. Supplying it enables
+Home Assistant's native backup encryption. Download the emergency kit after
+enabling encryption and keep a copy outside the cluster.
+
 Domotic uses SOPS for credentials but does not manage the key. Set up SOPS in
 the way you prefer: a local age or PGP key, a cloud KMS, or another backend
 supported by SOPS. If you use age, its default key file and the

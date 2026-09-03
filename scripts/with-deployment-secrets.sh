@@ -14,9 +14,10 @@ Usage:
   with-deployment-secrets.sh seed SECRETS_FILE -- COMMAND [ARGUMENTS...]
   with-deployment-secrets.sh cloudflare SECRETS_FILE -- COMMAND [ARGUMENTS...]
 
-The seed mode injects the Cloudflare token and Home Assistant onboarding
-password. The cloudflare mode injects only the Cloudflare token for restore or
-destroy operations. SOPS is solely responsible for locating its master key.
+The seed mode injects the Cloudflare token, Home Assistant onboarding password,
+and an optional native-backup password. The cloudflare mode injects only the
+Cloudflare token for restore or destroy operations. SOPS is solely responsible
+for locating its master key.
 EOF
 }
 
@@ -64,9 +65,18 @@ read_secret() {
   printf '%s' "$value"
 }
 
+has_secret() {
+  local key="$1"
+
+  jq -e --arg key "$key" 'has($key)' <<<"$secrets_json" >/dev/null
+}
+
 # Do not accidentally inherit stale Terraform credentials from the parent
 # shell; the decrypted document is authoritative for this command.
-unset TF_VAR_cloudflare_api_token TF_VAR_homeassistant_onboarding
+unset \
+  TF_VAR_cloudflare_api_token \
+  TF_VAR_homeassistant_onboarding \
+  TF_VAR_homeassistant_backup_password
 
 cloudflare_api_token="$(read_secret CLOUDFLARE_API_TOKEN)"
 environment=("TF_VAR_cloudflare_api_token=$cloudflare_api_token")
@@ -79,6 +89,15 @@ if [[ "$mode" != cloudflare ]]; then
       '{password: $password}'
   )"
   environment+=("TF_VAR_homeassistant_onboarding=$homeassistant_onboarding")
+
+  if has_secret HOMEASSISTANT_BACKUP_PASSWORD; then
+    homeassistant_backup_password="$(
+      read_secret HOMEASSISTANT_BACKUP_PASSWORD
+    )"
+    environment+=(
+      "TF_VAR_homeassistant_backup_password=$homeassistant_backup_password"
+    )
+  fi
 fi
 
 if [[ "$mode" == check ]]; then

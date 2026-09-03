@@ -68,7 +68,7 @@ check_private_file() {
 }
 
 if tracked_path "$terraform_vars_file" &&
-  grep -E -q '^[[:space:]]*(cloudflare_api_token|homeassistant_onboarding)([[:space:]]|=|$)' "$terraform_vars_file"; then
+  grep -E -q '^[[:space:]]*(cloudflare_api_token|homeassistant_onboarding|homeassistant_backup_password)([[:space:]]|=|$)' "$terraform_vars_file"; then
   fail "tracked Terraform variables must obtain Cloudflare and Home Assistant credentials from SOPS"
 fi
 
@@ -78,6 +78,10 @@ grep -Eq '^CLOUDFLARE_API_TOKEN:[[:space:]]+ENC\[' "$secrets_file" ||
 if grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:' "$secrets_file"; then
   grep -Eq '^HOMEASSISTANT_ADMIN_PASSWORD:[[:space:]]+ENC\[' "$secrets_file" ||
     fail "HOMEASSISTANT_ADMIN_PASSWORD must be encrypted in the SOPS secrets file"
+fi
+if grep -Eq '^HOMEASSISTANT_BACKUP_PASSWORD:' "$secrets_file"; then
+  grep -Eq '^HOMEASSISTANT_BACKUP_PASSWORD:[[:space:]]+ENC\[' "$secrets_file" ||
+    fail "HOMEASSISTANT_BACKUP_PASSWORD must be encrypted in the SOPS secrets file"
 fi
 grep -Eq '^sops:' "$secrets_file" || fail "SOPS metadata is missing from the encrypted secrets file"
 

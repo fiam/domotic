@@ -240,7 +240,7 @@ variable "homeassistant_automatic_backups" {
 }
 
 variable "homeassistant_backup_password" {
-  description = "Optional password used when seed mode initializes native Home Assistant backups. Terraform generates one when R2 is enabled; preserve it outside the cluster for recovery."
+  description = "Optional password used when seed mode initializes encrypted native Home Assistant backups. Omit it to initialize unencrypted backups."
   type        = string
   default     = null
   sensitive   = true

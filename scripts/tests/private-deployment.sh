@@ -40,6 +40,8 @@ printf '%s\n' \
   'test "${SOPS_AGE_KEY_FILE:-}" = "${EXPECTED_SOPS_AGE_KEY_FILE:-}"' \
   'if test "${FAKE_SOPS_WITHOUT_HA:-false}" = true; then' \
   '  printf '\''{"CLOUDFLARE_API_TOKEN":"test-cloudflare-token"}'\''' \
+  'elif test "${FAKE_SOPS_WITH_BACKUP:-false}" = true; then' \
+  '  printf '\''{"CLOUDFLARE_API_TOKEN":"test-cloudflare-token","HOMEASSISTANT_ADMIN_PASSWORD":"test-homeassistant-password","HOMEASSISTANT_BACKUP_PASSWORD":"test-backup-password"}'\''' \
   'else' \
   '  printf '\''{"CLOUDFLARE_API_TOKEN":"test-cloudflare-token","HOMEASSISTANT_ADMIN_PASSWORD":"test-homeassistant-password"}'\''' \
   'fi' > "$temp_root/bin/sops"
@@ -57,11 +59,22 @@ resolver_result="$(
           .password == "test-homeassistant-password" and
           (keys == ["password"])
         '\'' >/dev/null
+      test -z "${TF_VAR_homeassistant_backup_password+x}"
       printf sops-ok
     '
 )"
 [[ "$resolver_result" == sops-ok ]] ||
   fail "SOPS wrapper did not inject the expected Terraform variables"
+
+TF_VAR_homeassistant_backup_password=inherited-value \
+PATH="$temp_root/bin:$PATH" \
+SOPS_AGE_KEY_FILE="$fake_age_key_file" \
+EXPECTED_SOPS_AGE_KEY_FILE="$fake_age_key_file" \
+FAKE_SOPS_WITH_BACKUP=true \
+  "$repository_root/scripts/with-deployment-secrets.sh" \
+  seed "$fake_secrets_file" -- \
+  sh -c 'test "$TF_VAR_homeassistant_backup_password" = test-backup-password' ||
+  fail "SOPS wrapper did not inject the optional backup password"
 
 PATH="$temp_root/bin:$PATH" \
 SOPS_AGE_KEY_FILE="$fake_age_key_file" \
@@ -98,6 +111,7 @@ printf '%s\n' 'homeassistant: {}' > "$config_dir/values.yaml"
 printf '%s\n' \
   'CLOUDFLARE_API_TOKEN: ENC[AES256_GCM,data:test]' \
   'HOMEASSISTANT_ADMIN_PASSWORD: ENC[AES256_GCM,data:test]' \
+  'HOMEASSISTANT_BACKUP_PASSWORD: ENC[AES256_GCM,data:test]' \
   'sops:' \
   '  mac: ENC[AES256_GCM,data:test]' > "$config_dir/secrets.sops.yaml"
 printf '%s\n' \
@@ -139,6 +153,20 @@ sed -i.bak \
 if run_config_check >/dev/null 2>&1; then
   fail "a plaintext value in the tracked SOPS document was not rejected"
 fi
+mv "$config_dir/secrets.sops.yaml.bak" "$config_dir/secrets.sops.yaml"
+
+sed -i.bak \
+  's/^HOMEASSISTANT_BACKUP_PASSWORD:.*/HOMEASSISTANT_BACKUP_PASSWORD: must-not-be-plaintext/' \
+  "$config_dir/secrets.sops.yaml"
+if run_config_check >/dev/null 2>&1; then
+  fail "a plaintext backup password in the SOPS document was not rejected"
+fi
+mv "$config_dir/secrets.sops.yaml.bak" "$config_dir/secrets.sops.yaml"
+
+sed -i.bak '/^HOMEASSISTANT_BACKUP_PASSWORD:/d' \
+  "$config_dir/secrets.sops.yaml"
+run_config_check >/dev/null ||
+  fail "configuration required the optional Home Assistant backup password"
 mv "$config_dir/secrets.sops.yaml.bak" "$config_dir/secrets.sops.yaml"
 
 sed -i.bak '/^HOMEASSISTANT_ADMIN_PASSWORD:/d' "$config_dir/secrets.sops.yaml"

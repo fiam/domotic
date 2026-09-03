@@ -20,27 +20,7 @@ check "r2_account_token_id" {
   }
 }
 
-resource "random_password" "homeassistant_backup" {
-  count = (
-    var.r2_backup_bucket_name != null &&
-    var.homeassistant_backup_password == null
-  ) ? 1 : 0
-
-  length  = 32
-  special = false
-
-  lifecycle {
-    ignore_changes = all
-  }
-}
-
 locals {
-  effective_homeassistant_backup_password = (
-    var.homeassistant_backup_password != null ?
-    var.homeassistant_backup_password :
-    try(random_password.homeassistant_backup[0].result, "")
-  )
-
   homeassistant_automatic_backups_enabled = (
     var.r2_backup_bucket_name != null &&
     var.homeassistant_bootstrap_mode == "seed" &&
@@ -78,7 +58,10 @@ resource "kubernetes_secret" "homeassistant_r2_credentials" {
 }
 
 resource "kubernetes_secret" "homeassistant_backup_encryption" {
-  count = var.r2_backup_bucket_name == null ? 0 : 1
+  count = (
+    local.homeassistant_automatic_backups_enabled &&
+    var.homeassistant_backup_password != null
+  ) ? 1 : 0
 
   depends_on = [kubernetes_namespace.domotic]
 
@@ -97,7 +80,7 @@ resource "kubernetes_secret" "homeassistant_backup_encryption" {
   }
 
   data = {
-    password = local.effective_homeassistant_backup_password
+    password = var.homeassistant_backup_password
   }
 
   type = "Opaque"

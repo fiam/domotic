@@ -50,6 +50,9 @@ spec:
               automatic_backups_enabled = (
                   os.environ.get("AUTOMATIC_BACKUP_ENABLED") == "true"
               )
+              automatic_backup_password = (
+                  os.environ.get("AUTOMATIC_BACKUP_PASSWORD") or None
+              )
 
               class CredentialsRejected(Exception):
                   pass
@@ -423,12 +426,10 @@ spec:
                           existing_password = config_result["config"].get(
                               "create_backup", {}
                           ).get("password")
-                          if existing_password != os.environ.get(
-                              "AUTOMATIC_BACKUP_PASSWORD"
-                          ):
+                          if existing_password != automatic_backup_password:
                               print(
                                   "The preserved schedule uses its existing "
-                                  "emergency key, not the seed Secret"
+                                  "backup protection setting"
                               )
                           await websocket.close()
                           return
@@ -471,7 +472,7 @@ spec:
                           "backup/config/update",
                           agents={
                               agent_id: {
-                                  "protected": True,
+                                  "protected": automatic_backup_password is not None,
                                   "retention": None,
                               }
                           },
@@ -483,7 +484,7 @@ spec:
                               "include_database": True,
                               "include_folders": [],
                               "name": None,
-                              "password": os.environ["AUTOMATIC_BACKUP_PASSWORD"],
+                              "password": automatic_backup_password,
                           },
                           retention={
                               "copies": retention_copies,
@@ -495,8 +496,11 @@ spec:
                               "time": backup_time,
                           },
                       )
+                      protection = (
+                          "encrypted" if automatic_backup_password else "unencrypted"
+                      )
                       print(
-                          "Configured daily encrypted Home Assistant backups "
+                          f"Configured daily {protection} Home Assistant backups "
                           "to Cloudflare R2"
                       )
                       await websocket.close()
@@ -686,11 +690,13 @@ spec:
               value: {{ .Values.r2Backup.automatic.retentionCopies | quote }}
             - name: AUTOMATIC_BACKUP_TIME
               value: {{ .Values.r2Backup.automatic.time | default "" | quote }}
+          {{- if .Values.r2Backup.automatic.existingSecret.name }}
             - name: AUTOMATIC_BACKUP_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ required "r2Backup.automatic.existingSecret.name is required when automatic R2 backups are enabled" .Values.r2Backup.automatic.existingSecret.name }}
+                  name: {{ .Values.r2Backup.automatic.existingSecret.name }}
                   key: {{ .Values.r2Backup.automatic.existingSecret.passwordKey }}
+          {{- end }}
           {{- end }}
           {{- with .Values.onboarding.resources }}
           resources:

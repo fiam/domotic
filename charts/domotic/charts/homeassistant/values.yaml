@@ -72,10 +72,11 @@ r2Backup:
     name: ""
     accessKeyIdKey: access_key_id
     secretAccessKeyKey: secret_access_key
-  # With Terraform, this defaults to daily encrypted backups retained for
-  # seven copies when R2 is enabled in seed mode. The onboarding hook
-  # initializes only an unconfigured backup schedule; later UI changes remain
-  # owned by Home Assistant.
+  # With Terraform, this defaults to daily backups retained for seven copies
+  # when R2 is enabled in seed mode. Set existingSecret.name to encrypt them;
+  # leave it empty for unencrypted backups. The onboarding hook initializes
+  # only an unconfigured backup schedule; later UI changes remain owned by
+  # Home Assistant.
   automatic:
     enabled: false
     agentName: ""

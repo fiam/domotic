@@ -18,7 +18,7 @@ Last verified: **2026-08-31**
 | MQTT config flow result | entry `2.1`, protocol `5`, transport `tcp` |
 | Cloudflare R2 config flow result | entry `1.1` |
 | Resulting backup storage | `.storage/backup`, store `1.7` |
-| Seeded automatic backup | daily, R2 only, seven copies, protected |
+| Seeded automatic backup | daily, R2 only, seven copies; protection follows the optional password |
 | Core settings command | `config/core/update` |
 | Reconciled core settings | location name, external URL, internal URL |
 | Config-entry lookup command | `config_entries/get` |
@@ -134,9 +134,9 @@ required payloads and migration behavior more precisely than user-facing docs.
    and log checks. This catches schemas accepted only during migration and
    verifies that remote custom-integration installation is repeatable.
 9. When automatic R2 backups are enabled, verify only the expected R2 agent is
-   selected, recurrence and retention match the inputs, protection is set, and
-   `next_automatic_backup` is populated. Re-run the hook and confirm it
-   preserves stored settings.
+   selected, recurrence and retention match the inputs, protection matches
+   whether a password was supplied, and `next_automatic_backup` is populated.
+   Re-run the hook and confirm it preserves stored settings.
 10. Test restore mode separately with a disposable native backup. Confirm that
     neither integration config flows nor owner seeding runs and that restored
     configuration survives another restart.
