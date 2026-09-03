@@ -1,13 +1,14 @@
 # Home Assistant custom integrations
 
 This repository does not ship any custom Home Assistant integration by
-default. Deployments opt into integrations explicitly through Terraform or
+default. Deployments opt into integrations explicitly through OpenTofu or
 private Helm values.
 
-## Recommended: Terraform-managed archive
+## Recommended: OpenTofu-managed archive
 
 Set `homeassistant_remote_custom_components` in the ignored
-`infra/terraform.tfvars` file. Each entry installs exactly one integration
+`config/infra/terraform.tfvars` file in a private deployment. Each entry
+installs exactly one integration
 domain:
 
 ```hcl
@@ -35,7 +36,7 @@ shasum -a 256 "$archive"
 rm "$archive"
 ```
 
-Terraform writes only the URL, digest, domain, and archive path to generated
+OpenTofu writes only the URL, digest, domain, and archive path to generated
 non-secret Helm values. An init container downloads the archive on every Home
 Assistant pod creation, verifies the SHA-256, rejects unsafe archive paths,
 checks for `manifest.json`, and copies only the declared integration directory
@@ -46,19 +47,18 @@ URLs must use HTTPS and must not contain credentials, private access tokens, or
 expiring signed parameters. The current mechanism supports public archives. A
 private repository should publish a separately accessible immutable artifact
 or be supplied through the repository-local Helm method below; do not put a
-repository token in Terraform's non-secret Helm output.
+repository token in OpenTofu's non-secret Helm output.
 
 Apply and deploy after changing the list:
 
 ```sh
-task infra:plan
-task infra:apply
-task helm:deploy
+task plan
+task deploy
 ```
 
 ## Direct Helm values
 
-Deployments that do not use Terraform can provide the equivalent values in an
+Deployments that do not use OpenTofu can provide the equivalent values in an
 ignored `values.yaml`:
 
 ```yaml
@@ -96,7 +96,7 @@ mechanism verifies artifact identity; it cannot establish compatibility or
 trustworthiness.
 
 To upgrade an integration, change its immutable URL, digest, and archive path
-together, then run the normal Terraform and Helm workflow. The pod-template
+together, then run the normal OpenTofu and Helm workflow. The pod-template
 checksum changes and forces a Home Assistant rollout.
 
 Before removing an integration from the list, remove its config entries from

@@ -1,45 +1,24 @@
 # Domotic
 
 [![Kubernetes v1.23+](https://img.shields.io/badge/Kubernetes-v1.23%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://kubernetes.io/releases/)
-[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-Core-18BCF2?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
-[![Terraform](https://img.shields.io/badge/Terraform-1.7%2B-844FBA?style=flat-square&logo=terraform&logoColor=white)](https://developer.hashicorp.com/terraform)
-[![Helm](https://img.shields.io/badge/Helm-3-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
+[![Home Assistant 2026.8.3](https://img.shields.io/badge/Home%20Assistant-2026.8.3-18BCF2?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
+[![OpenTofu v1.12+](https://img.shields.io/badge/OpenTofu-v1.12%2B-FFDA18?style=flat-square&logo=opentofu&logoColor=black)](https://opentofu.org/)
+[![Helm 3](https://img.shields.io/badge/Helm-3-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
 
 Home Assistant, Zigbee2MQTT, Mosquitto, and Cloudflare Tunnel on Kubernetes.
-Domotic also manages Zigbee network settings, local routes, and optional R2
-backups.
 
-## Installation
+Domotic works with any Kubernetes environment that ships Gateway API. The
+[k3s guide](DEPLOYMENT.md) covers a common single-server home setup, but k3s is
+not required.
 
-Keep your home's configuration in a separate private repository. It will pin
-the Domotic version, hold the SOPS-encrypted credentials, and provide the Task
-commands used below. You do not need to fork this repository.
+## Install
 
-### Supported Kubernetes environments
+Install `kubectl`, OpenTofu 1.12 or newer, Helm 3, Git, `jq`, and
+[Task](https://taskfile.dev/docs/installation). If you use
+[tenv](https://tofuutils.github.io/tenv/), the included `.opentofu-version`
+selects the tested OpenTofu release automatically.
 
-Domotic supports Kubernetes 1.23 or newer on any distribution with Gateway API.
-The included [k3s guide](DEPLOYMENT.md) is a complete reference for a
-single-node home server, not a requirement.
-
-### 1. Install the workstation tools
-
-Install `kubectl`, Terraform 1.7 or newer, Helm 3 or newer, Git, `jq`,
-[SOPS](https://getsops.io/docs/), and
-[Task](https://taskfile.dev/docs/installation). Repository backups additionally
-use `age` and the AWS CLI.
-
-On macOS, Task and SOPS are available through Homebrew:
-
-```sh
-brew install go-task sops
-```
-
-You also need a Kubernetes cluster, a Cloudflare account with a managed domain,
-and a supported Zigbee adapter.
-
-### 2. Create a private deployment repository
-
-Run this in the directory where you keep your private projects:
+Create an independent private repository for your home's configuration:
 
 ```sh
 mkdir home-deployment
@@ -50,216 +29,164 @@ task --taskfile \
   init
 ```
 
-Task asks you to approve the remote Taskfile the first time. Check the
-repository URL before accepting it. `main` can be replaced with a tag, Git ref,
-or full commit. The entrypoint resolves it and records the exact commit in the
-generated `Taskfile.yml`.
+Task asks you to approve the remote Taskfile the first time. Check the URL
+before accepting it. `main` can be replaced with a tag, branch, or commit; the
+generated Taskfile records the resolved commit.
 
-### 3. Encrypt the deployment credentials
+### Configure Cloudflare and R2
 
-Configure SOPS with the key backend of your choice, then create the encrypted
-secrets file:
+Create an account API token in Cloudflare with these permissions:
+
+- Entire account: Account API Tokens Read and Write
+- Entire account: Workers R2 Storage Read and Write
+- Entire account: Cloudflare One Connector `cloudflared` Read and Write
+- The selected zone: Zone Read and DNS Read and Write
+
+The token creates two narrower R2 credentials. One can access only OpenTofu
+state; the other can access only Home Assistant backups.
+
+Edit `config/bootstrap.tfvars`:
+
+```hcl
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+r2_bucket_prefix      = "my-home"
+# r2_location         = "weur"
+```
+
+The prefix must be unique within the Cloudflare account. It creates these
+private buckets:
+
+```text
+my-home-state
+my-home-backups
+```
+
+A second installation can use the same account with another prefix.
+
+Run the bootstrap task and enter a recovery passphrase and the Cloudflare
+token when prompted:
 
 ```sh
-cp config/secrets.yaml.example config/secrets.yaml
-chmod 0600 config/secrets.yaml
-${EDITOR:-vi} config/secrets.yaml
-sops encrypt --filename-override config/secrets.sops.yaml \
-  < config/secrets.yaml > config/secrets.sops.yaml
-rm config/secrets.yaml
-
-git add config/secrets.sops.yaml
-task secrets:check
+task bootstrap
 ```
 
-The file contains two values:
+The resulting state file is encrypted by OpenTofu. Keep the recovery passphrase
+in a password manager; it is not stored in the repository or the cluster. For
+automation, provide it as `DOMOTIC_RECOVERY_PASSPHRASE`.
 
-```yaml
-CLOUDFLARE_API_TOKEN: your-account-api-token
-HOMEASSISTANT_ADMIN_PASSWORD: your-initial-owner-password
-```
-
-Domotic does not manage the SOPS key. Standard age, PGP, and KMS setups all
-work. Use `task secrets:edit` when the encrypted values need to change.
-
-### 4. Configure, validate, and deploy
-
-Deployment commands use the current kubeconfig context and honor `KUBECONFIG`.
-Check the target before planning or deploying:
-
-```sh
-kubectl config current-context
-```
+### Configure and deploy
 
 Edit:
 
-- `config/infra/terraform.tfvars` for Cloudflare, local hostnames, R2, and
-  Zigbee network settings;
-- `config/values.yaml` for the Zigbee adapter, storage, resources, and
-  application settings.
+- `config/infra/terraform.tfvars` for the domain, routes, and Zigbee network;
+- `config/values.yaml` for storage, the Zigbee adapter, and workload settings.
 
-Keep `homeassistant_bootstrap_mode = "seed"` for a new Home Assistant
-installation. Then run:
+Stage the private configuration so the safety check can verify exactly what
+Git will retain. Deployment commands use the current kubeconfig context and
+honor `KUBECONFIG`:
 
 ```sh
-task secrets:check
+git add .
+kubectl config current-context
 task check
 task plan
+
+git commit -m "chore: configure home deployment"
+git remote add origin <private-repository-url>
+git push -u origin main
+
 task deploy
 task status
 ```
 
-Review the Terraform plan before applying it. Once the deployment is healthy,
-commit and push the private repository:
+OpenTofu generates the initial Home Assistant owner password. Retrieve it only
+when needed:
 
 ```sh
-git add .
-git commit -m "chore: configure home deployment"
-git remote add origin <private-repository-url>
-git push -u origin main
+task credentials:show
 ```
 
-With the documented k3s setup, the default local addresses are:
+The default username is `admin`. Change the non-secret owner profile with
+`homeassistant_owner` in `config/infra/terraform.tfvars`.
+
+With the documented k3s setup, the local routes are:
 
 - `http://homeassistant.local`
 - `http://zigbee2mqtt.local`
 
-Home Assistant is also available at the Cloudflare hostname configured in
-`config/infra/terraform.tfvars`.
+Home Assistant is also available at the Cloudflare hostname in the OpenTofu
+configuration.
 
-## What gets deployed
+## Backups and recovery
 
-Terraform manages the Cloudflare tunnel and DNS, the optional R2 bucket,
-protected Zigbee settings, and the Kubernetes secrets consumed by the chart.
-Helm deploys:
+Home Assistant configures daily native backups in `<prefix>-backups` and keeps
+seven copies by default. Backups are unencrypted unless
+`homeassistant_backup_encryption_enabled = true`; when enabled, OpenTofu
+generates the password and `task credentials:show` reveals it.
 
-- Home Assistant
-- Zigbee2MQTT
-- Mosquitto
-- cloudflared
+An hourly CronJob stages a validated Zigbee2MQTT data-directory ZIP inside the
+Home Assistant configuration volume. The next native backup includes it, so
+the R2 backup covers Home Assistant data and the Zigbee2MQTT identity and
+database.
 
-`task deploy` runs both layers in that order. Application data lives on
-persistent volumes. Terraform state lives in a Kubernetes Secret, so preserve
-the state or run the matching destroy operation before deleting a cluster that
-owns external Cloudflare resources.
+OpenTofu state lives in `<prefix>-state` and is encrypted before upload. It
+retains generated passwords, Cloudflare resource IDs, and Zigbee network keys.
+Deleting a Kind cluster or losing a server does not delete that state.
 
-## Common tasks
+To restore Home Assistant onto a new cluster:
 
-Run these from the private repository:
+```sh
+task restore:plan
+task restore
+```
+
+Upload the native backup in Home Assistant. When it has restarted, run
+`task restore:complete`; it records an owner credential from the restored
+system in encrypted state and resumes normal reconciliation.
+
+See [BACKUP.md](BACKUP.md) for recovery details.
+
+## Common commands
 
 | Command | Purpose |
 | --- | --- |
-| `task secrets:edit` | Edit the SOPS-encrypted credentials. |
-| `task check` | Validate the code and private configuration. |
-| `task plan` | Preview Terraform changes. |
-| `task deploy` | Apply Terraform and deploy the Helm release. |
-| `task domotic:update REF=main` | Update the pinned Domotic code without deploying it. |
-| `task homeassistant:update` | Deploy the Home Assistant version verified by the Domotic pin. |
-| `task homeassistant:deploy` | Reapply Helm without running Terraform. |
-| `task status` | Show the release and workload status. |
-| `task keys:capture` | Refresh the portable Zigbee identity. |
-| `task backup` | Upload an encrypted recovery archive. |
-| `task restore:plan` | Preview native Home Assistant restore mode. |
-| `task restore` | Start a blank instance for native backup import. |
+| `task bootstrap` | Create or update the persistent R2 foundation. |
+| `task check` | Validate code and private configuration. |
+| `task plan` | Preview OpenTofu changes. |
+| `task deploy` | Apply OpenTofu and deploy the Helm release. |
+| `task status` | Show workloads and routes. |
+| `task credentials:show` | Reveal generated recovery credentials. |
+| `task credentials:update` | Record a Home Assistant password changed in the UI. |
+| `task zigbee:import SOURCE=…` | Import an existing Zigbee identity. |
+| `task restore`, `task restore:complete` | Restore a native Home Assistant backup. |
+| `task domotic:update REF=main` | Update the pinned Domotic source. |
+| `task homeassistant:update` | Deploy the Home Assistant version verified by that source. |
+| `task cloudflare-token:update` | Replace the account token in encrypted bootstrap state. |
+| `task recovery-passphrase:update` | Re-encrypt both state files with a new passphrase. |
 
-## Backups and restore
-
-Home Assistant can write native backups, optionally encrypted, to a private R2
-bucket. A separate repository backup preserves Terraform state, the Zigbee
-identity, and Kubernetes recovery secrets:
-
-```sh
-cp config/backup.env.example config/backup.env
-chmod 0600 config/backup.env
-task backup
-```
-
-Setup and recovery instructions are in [BACKUP.md](BACKUP.md).
-
-To import an existing native Home Assistant backup, run `task restore:plan`
-and `task restore`, then choose **Upload backup** in Home Assistant. After the
-restore, put the password of an owner from the restored system in
-`config/secrets.sops.yaml` before returning to `task deploy`.
-
-## Zigbee network safety
-
-The network key, extended PAN ID, PAN ID, and channel identify an existing
-Zigbee network. Losing or changing them can mean pairing every device again.
-Terraform records the live identity and blocks accidental changes.
-
-After a successful deployment:
-
-```sh
-task keys:capture
-task backup
-```
-
-Only set `force_update_secrets = true` when deliberately creating a different
-Zigbee network.
-
-## Upgrading
-
-Update the private repository plumbing without changing the cluster:
-
-```sh
-task domotic:update REF=main
-git diff -- Taskfile.yml
-task check
-```
-
-The task resolves `main` to an exact commit. A tag, full Git ref, or commit can
-be used instead. Commit the updated pin after reviewing it.
-
-Each Domotic revision declares one tested Home Assistant version. After
-updating Domotic and making both backups, deploy that image without running
-Terraform:
-
-```sh
-task backup
-task homeassistant:update
-task status
-```
-
-Helm still reconciles the complete Domotic release, so any pending changes in
-`config/values.yaml` are also applied. Home Assistant setup uses
-version-coupled APIs; read
-[HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md) before
-changing the Home Assistant version.
+`task destroy` removes the Helm release and ordinary managed infrastructure.
+It preserves both R2 buckets and the scoped credentials that make recovery
+possible.
 
 ## Development
 
-Clone this repository when changing Terraform, charts, or scripts:
+Clone this repository when changing the OpenTofu configuration, charts, or
+scripts. Run the full static suite with:
 
 ```sh
-git clone https://github.com/fiam/domotic.git
-cd domotic
 task check
 ```
 
-The development environment uses Kind, an NGINX Gateway, and a Zigbee
-coordinator emulator. After preparing disposable `infra/terraform.tfvars`:
+The development stack uses Kind. On macOS, Colima's shared network mode is
+needed for pods to make unicast connections to devices on the physical LAN.
+See [DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md) before recreating
+Colima or a Kind cluster.
 
-```sh
-task deploy-dev
-task dev:hosts:install
-task dev:status
-```
+More detail:
 
-Colima and LAN networking details are in
-[DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md). Destroy the Terraform
-resources before deleting the Kind cluster:
-
-```sh
-task destroy-dev
-task dev:hosts:remove
-```
-
-## Documentation
-
-- [k3s installation](DEPLOYMENT.md)
 - [Private deployment workflow](PRIVATE_DEPLOYMENT.md)
-- [Backups and recovery](BACKUP.md)
-- [Custom Home Assistant integrations](CUSTOM_INTEGRATIONS.md)
-- [Kind and Colima networking](DEVELOPMENT_NETWORKING.md)
+- [k3s installation](DEPLOYMENT.md)
+- [Backups and disaster recovery](BACKUP.md)
+- [OpenTofu infrastructure](infra/README.md)
 - [Home Assistant compatibility contract](HOME_ASSISTANT_COMPATIBILITY.md)
-- [Terraform details](infra/README.md)
+- [Custom integrations](CUSTOM_INTEGRATIONS.md)

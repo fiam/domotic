@@ -88,45 +88,24 @@ reply alone does not prove that its application protocol is accessible.
 
 ## Destructive recreation safety
 
-The isolated Kind workflow stores Terraform state in the
-`kind-ha-terraform-state` namespace inside the Kind cluster. Terraform also
-manages resources outside that cluster: the Cloudflare tunnel, tunnel
-configuration, DNS record, and optional R2 bucket.
+The development stack keeps encrypted OpenTofu state in Cloudflare R2, not in
+the Kind cluster. Deleting Kind or Colima therefore no longer destroys the
+resource inventory needed to clean up tunnels and DNS records.
 
-Never delete the Kind cluster or Colima VM first. Choose one of these paths:
-
-1. Preserve and restore the Terraform state before deleting the cluster, if
-   the external resources must survive.
-2. Run Terraform destroy successfully while the cluster and its state backend
-   are still available, if the external test infrastructure should be removed.
-
-For the disposable `kind-ha` environment, initialize the correct backend and
-destroy with the matching ignored variable files:
+It is still cleaner to destroy the deployment while the cluster is reachable,
+because OpenTofu can refresh and remove its Kubernetes resources normally:
 
 ```sh
-task infra:init \
-  KUBE_CONTEXT=kind-ha \
-  STATE_NAMESPACE=kind-ha-terraform-state \
-  TF_VARS_FILE=kind-ha.tfvars \
-  TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
-  HELM_VALUES_FILE=helm-values-kind-ha.yaml
-
-task infra:destroy \
-  KUBE_CONTEXT=kind-ha \
-  STATE_NAMESPACE=kind-ha-terraform-state \
-  TF_VARS_FILE=kind-ha.tfvars \
-  TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
-  HELM_VALUES_FILE=helm-values-kind-ha.yaml
+kubectl config use-context kind-ha
+task destroy-dev TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
-The R2 bucket has `prevent_destroy = true` intentionally. Do not disable the
-guard or empty the bucket unless the user explicitly authorizes deleting that
-exact bucket and its objects. A non-empty bucket cannot be deleted. Cloudflare
-also refuses to delete a tunnel with active cloudflared connections; after the
-workload stops, wait for the connections to close and retry Terraform destroy.
+The development prefix creates persistent `<prefix>-state` and
+`<prefix>-backups` buckets. Normal destroy does not remove either bucket.
+Cloudflare may refuse to delete a tunnel while cloudflared connections are
+still closing; wait briefly and retry the destroy before deleting the cluster.
 
-Only after the destroy succeeds and `terraform state list` is empty may an
-agent remove the local runtime data:
+Only after the destroy succeeds should an agent remove the local runtime data:
 
 ```sh
 colima delete default --data --force
@@ -157,17 +136,26 @@ colima start default \
   --save-config
 ```
 
-After deployment, verify the cluster and Terraform state:
+Copy and edit the ignored development foundation settings once, using a prefix
+that is not shared with any other installation:
 
 ```sh
-kubectl --context kind-ha get nodes
-kubectl --context kind-ha --namespace kind-ha get pods,httproutes
-task infra:plan \
-  KUBE_CONTEXT=kind-ha \
-  STATE_NAMESPACE=kind-ha-terraform-state \
-  TF_VARS_FILE=kind-ha.tfvars \
-  TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
-  HELM_VALUES_FILE=helm-values-kind-ha.yaml
+cp bootstrap/terraform.tfvars.example bootstrap.tfvars
+${EDITOR:-vi} bootstrap.tfvars
+task bootstrap-local
+```
+
+The encrypted bootstrap state stays ignored in a public source checkout. Keep
+the development recovery passphrase in the same place used for the private
+deployment, or export `DOMOTIC_RECOVERY_PASSPHRASE` for disposable automation.
+
+After deployment, verify the cluster and OpenTofu state:
+
+```sh
+kubectl config use-context kind-ha
+kubectl get nodes
+kubectl --namespace kind-ha get pods,httproutes
+task deploy-dev TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
 The plan must report no changes after the apply.

@@ -1,137 +1,61 @@
-# Encrypted Cloudflare R2 backups
+# Backups and disaster recovery
 
-The backup workflow creates a private R2 bucket with Terraform, gives Home
-Assistant access through a Terraform-managed Kubernetes Secret, encrypts a
-separate configuration archive locally with
-[age](https://github.com/FiloSottile/age), and uploads only encrypted archives.
-The credentials and age private identity remain outside Git and outside the
-bucket.
+Domotic uses two private Cloudflare R2 buckets for different purposes:
 
-The archive contains:
+- `<prefix>-state` contains client-side encrypted OpenTofu state;
+- `<prefix>-backups` contains Home Assistant native backups.
 
-- the selected Terraform variables, portable Zigbee key variables,
-  `values.yaml`, and generated Helm values when present (all resolved beneath
-  `CONFIG_DIR` for a private deployment);
-- the current Terraform state, pulled from the configured Kubernetes backend;
-- the live `zigbee-keys` Secret and `zigbee-network` ConfigMap;
-- the live `cloudflared-tunnel-token` Secret;
-- the live `homeassistant-r2-credentials` Secret when R2 is enabled;
-- the native `homeassistant-backup-encryption` recovery Secret when native
-  backup encryption is enabled;
-- the seed-mode `homeassistant-onboarding` Secret when present; and
-- a manifest with the backup timestamp and source cluster context.
+The buckets have different scoped credentials. Home Assistant cannot read or
+modify infrastructure state.
 
-It does **not** back up PersistentVolume contents such as Home Assistant's
-database or Zigbee2MQTT's runtime data. Add a storage-level backup before those
-volumes contain anything you cannot recreate.
+There is no separate Domotic repository-backup command. The private Git
+repository, encrypted OpenTofu state, and Home Assistant native backups are the
+recovery set.
 
-Home Assistant's native backup is the preferred way to preserve its database,
-automations, users, and other application state. For a new cluster restored
-from such a backup, set this before the first deployment:
+## What to keep
 
-```hcl
-homeassistant_bootstrap_mode = "restore"
-```
+Keep these independently recoverable:
 
-This keeps the native **Upload backup** action available on the welcome screen
-by skipping owner, MQTT, R2, HTTP configuration, automation, script, and scene
-seeding. The only created file is a minimal `configuration.yaml` that the
-restored `/config` replaces. After the restore succeeds, changing the mode back
-to `seed` is safe: the chart adopts and preserves restored files. Keep the
-backup emergency-kit key separately; it is required for
-encrypted native backups. See [Home Assistant's backup and restore
-instructions](https://www.home-assistant.io/common-tasks/general/#backups).
+1. the private deployment repository, including `state/bootstrap.tfstate`;
+2. the recovery passphrase used by OpenTofu;
+3. the native Home Assistant backups in R2.
 
-## 1. Install the client tools
+The encrypted bootstrap state contains the Cloudflare account token and the
+two bucket-scoped credentials. The main state bucket contains generated Home
+Assistant credentials, Zigbee keys, Cloudflare resource IDs, and the desired
+Kubernetes objects. Home Assistant's backup contains its database and `/config`.
 
-Install `age`, `jq`, and the AWS CLI on the machine from which you run Task:
+Losing only a Kubernetes cluster or server is recoverable. Losing the recovery
+passphrase makes both OpenTofu states unreadable. Losing the state bucket can
+orphan external Cloudflare resources even if the Home Assistant backup
+survives.
 
-```bash
-# macOS
-brew install age awscli jq
+## Bucket setup
 
-# Debian/Ubuntu (when both packages are available from your configured repos)
-sudo apt-get update
-sudo apt-get install --yes age awscli jq
-```
-
-Cloudflare R2 exposes an S3-compatible API, which is why this workflow uses the
-AWS CLI with the R2 endpoint and `auto` region.
-
-## 2. Create the R2 bucket
-
-The account API token in `infra/terraform.tfvars` needs **Workers R2 Storage
-Read** and **Write** in its **Entire Account** policy. Get that token's ID
-without printing its secret:
-
-```bash
-export CLOUDFLARE_ACCOUNT_ID="<your-account-id>"
-printf "Cloudflare account token: " >&2
-read -r -s CLOUDFLARE_API_TOKEN
-printf "\n" >&2
-curl -fsS \
-  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/tokens/verify" \
-  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" |
-  jq -r .result.id
-unset CLOUDFLARE_API_TOKEN
-```
-
-Add the ID, a bucket name, and optionally a location hint. The ID is not the
-`cfat_...` token value and is not secret. Bucket names use 3-63 lowercase
-letters, numbers, or hyphens and cannot begin or end with a hyphen:
+The private deployment's `config/bootstrap.tfvars` selects the bucket prefix:
 
 ```hcl
-cloudflare_api_token_id        = "0123456789abcdef0123456789abcdef"
-r2_backup_bucket_name          = "my-domotic-backups"
-r2_backup_location             = "weur"
-homeassistant_r2_backup_prefix = "home-assistant"
+cloudflare_account_id = "0123456789abcdef0123456789abcdef"
+r2_bucket_prefix      = "my-home"
+r2_location           = "weur" # optional
 ```
 
-Apply the infrastructure change:
+`task bootstrap` creates `my-home-state` and `my-home-backups`, plus one
+object read/write token for each bucket. Use a different prefix for every
+Domotic installation sharing the Cloudflare account.
 
-```bash
-task infra:plan
-task infra:apply
-```
+Both buckets are private and protected from ordinary OpenTofu destruction.
+The state backend also uses OpenTofu's adjacent `.tflock` object to serialize
+operations.
 
-The bucket has Terraform's `prevent_destroy` lifecycle guard. Removing its
-configuration or running `terraform destroy` will stop with an error instead of
-silently deleting the backups. Preserve the objects elsewhere before removing
-that guard deliberately.
+## Automatic Home Assistant backups
 
-## 3. Configure Home Assistant backups
+In seed mode, the Home Assistant onboarding Job creates a Cloudflare R2 backup
+agent through Home Assistant's config flow. It then initializes automatic
+backups with seven-copy retention and Home Assistant's default randomized
+early-morning schedule.
 
-Terraform uses the same account token to derive the R2 S3 credential pair:
-
-- Access Key ID: the account API token ID;
-- Secret Access Key: the SHA-256 hash of the account API token value.
-
-It stores only that pair in the `homeassistant-r2-credentials` Kubernetes
-Secret. In seed mode, the authenticated Helm hook creates Home Assistant's
-official **Cloudflare R2** integration through its config flow with the bucket,
-endpoint, credentials, and `home-assistant` prefix. The flow validates access
-to the bucket before saving the entry. The raw `cfat_...` bearer token is never
-placed in the Home Assistant pod.
-
-This is the convenient one-token profile: a compromise of Home Assistant would
-expose access to R2 objects allowed by the account token, but would not expose
-the original bearer token or grant access to DNS and tunnel APIs. Use a
-separate bucket-scoped R2 token only if you later want stronger isolation.
-
-Seed mode requires `homeassistant_onboarding` and uses that owner's temporary
-authenticated session to initialize automatic backups. The defaults are one
-unencrypted backup every day, the private R2 bucket as the only location,
-seven retained copies, and Home Assistant's randomized early-morning start
-time. The hook marks the backup setup as configured only after the matching R2
-agent is available.
-
-Private deployments can optionally set `HOMEASSISTANT_BACKUP_PASSWORD` in
-`config/secrets.sops.yaml`. The deployment wrapper passes it to Terraform as
-the `homeassistant_backup_password` override and Terraform stores it in the
-`homeassistant-backup-encryption` Secret. If it is omitted, the hook configures
-the R2 destination as unprotected and passes no password to Home Assistant.
-
-Override the first-boot defaults when needed:
+Override those defaults in `config/infra/terraform.tfvars`:
 
 ```hcl
 homeassistant_automatic_backups = {
@@ -141,127 +65,132 @@ homeassistant_automatic_backups = {
 }
 ```
 
-Set `enabled = false` to opt out. Omitting `time` lets Home Assistant select its
-default time and add jitter. These values initialize a fresh, unconfigured
-schedule; subsequent changes under **Settings > System > Backups** are
-preserved instead of being reconciled by Terraform or Helm.
+The bootstrap settings are applied only when the R2 config entry or automatic
+backup settings are missing. Later changes made in Home Assistant remain
+authoritative.
 
-Existing integration entries and native restores are never modified. When
-switching a restored installation back to seed mode, provide credentials for
-an existing restored owner so the hook can preserve or initialize the schedule.
+Backups are unencrypted by default because the bucket is private. To enable
+Home Assistant's native backup encryption:
 
-For an encrypted schedule initialized by this hook, preserve the recovery
-password outside the cluster. The repository backup task includes its Secret
-inside the separate age-encrypted archive. You can also copy it directly into
-a password manager:
+```hcl
+homeassistant_backup_encryption_enabled = true
+```
+
+OpenTofu generates and retains the password in encrypted state. Retrieve it
+with `task credentials:show`, and download Home Assistant's emergency kit from
+the backup settings page. Keep the kit outside the cluster and R2 account.
+
+Verify backups in Home Assistant under **Settings → System → Backups**. An
+actual restore test is stronger than checking that an object exists in R2.
+
+## Zigbee2MQTT data in native backups
+
+An hourly Kubernetes CronJob asks Zigbee2MQTT for its documented data-directory
+backup over MQTT. It validates the response as a ZIP and atomically replaces:
+
+```text
+/config/.domotic/zigbee2mqtt/latest.zip
+/config/.domotic/zigbee2mqtt/latest.timestamp
+```
+
+Home Assistant includes that directory in its native `/config` archive. Only
+one Zigbee2MQTT snapshot is staged, so it does not create a second retention
+system. With the default `17 * * * *` schedule, Zigbee data can be up to one
+hour older than the Home Assistant backup.
+
+The Job mounts only Home Assistant's claim. Required pod affinity places it on
+the Home Assistant pod's node for `ReadWriteOnce` volumes; it never mounts the
+live Zigbee2MQTT claim. A failed MQTT request or invalid ZIP leaves the last
+valid snapshot intact.
+
+Change the schedule or disable staging in `config/values.yaml`:
+
+```yaml
+homeassistant:
+  zigbee2mqttBackup:
+    schedule: "17 */6 * * *"
+    # enabled: false
+```
+
+Inspect execution status without displaying archive contents:
 
 ```sh
-kubectl -n domotic \
-  get secret homeassistant-backup-encryption \
-  -o go-template='{{index .data "password" | base64decode}}{{"\n"}}'
+kubectl -n domotic get cronjob domotic-homeassistant-z2m-backup
+kubectl -n domotic get jobs \
+  -l app.kubernetes.io/component=zigbee2mqtt-backup
 ```
 
-Anyone with this password and a native backup can decrypt that backup. Do not
-commit it or reuse the Cloudflare, R2, or Home Assistant owner credentials.
-Home Assistant's Cloudflare R2 integration requires Home Assistant 2026.2 or
-newer.
+A Home Assistant restore puts the staged ZIP back under `/config`. Restoring
+that ZIP into a new Zigbee2MQTT volume is a separate maintenance operation;
+never extract it over a running Zigbee2MQTT instance.
 
-If Home Assistant already has backup settings, the hook preserves them and
-does not replace their encryption setting or password. Adding or removing
-`HOMEASSISTANT_BACKUP_PASSWORD` later therefore does not rewrite an existing
-schedule; make that change under **Settings > System > Backups**. For an
-encrypted schedule, its existing Home Assistant emergency-kit key remains
-authoritative and may differ from the Terraform Secret.
+## Restore onto a new cluster
 
-The chart detects a matching **Cloudflare R2** config entry and preserves it.
-It creates only a missing entry, through Home Assistant's own validated config
-flow.
+Clone the private repository and configure access to the replacement cluster:
 
-## 4. Create the encryption identity
-
-```bash
-install -d -m 0700 "$HOME/.config/domotic"
-age-keygen -o "$HOME/.config/domotic/backup.agekey"
-age-keygen -y "$HOME/.config/domotic/backup.agekey"
+```sh
+git clone <private-repository-url> home-deployment
+cd home-deployment
+kubectl config current-context
 ```
 
-The final command prints the public recipient beginning with `age1`. Keep a
-second, protected copy of `backup.agekey` in a password manager or offline
-storage. The public recipient can encrypt backups but cannot decrypt them; the
-private identity is required for recovery.
+Then prepare Home Assistant's native restore screen:
 
-## 5. Configure and run backups
-
-```bash
-cp backup.env.example backup.env
-chmod 0600 backup.env
+```sh
+task restore:plan
+task restore
 ```
 
-Fill `backup.env` with the account ID, bucket name, the same derived R2
-credentials, public age recipient, and the absolute path to the private age
-identity. The configuration backup defaults to the separate `domotic/` prefix,
-while Home Assistant uses `home-assistant/`. The file is ignored by Git.
+Enter the OpenTofu recovery passphrase when prompted. The restore task reads
+the existing encrypted main state from R2, recreates cluster secrets and
+routes, and deploys only the minimal Home Assistant configuration needed for
+the native upload flow.
 
-In a private deployment repository the file is `config/backup.env`; the remote
-Taskfile supplies its path automatically. `VALUES_FILE`, `TF_VARS_FILE`,
-`TF_KEYS_FILE`, and `HELM_VALUES_FILE` may point outside the public source, and
-the backup records those selected files without copying them into the
-materialized checkout.
+Upload the chosen backup in Home Assistant and wait for the application to
+restart. Then run:
 
-You can read the generated credential values from the Kubernetes Secret:
-
-```bash
-kubectl -n domotic get secret homeassistant-r2-credentials \
-  -o jsonpath='{.data.access_key_id}' | base64 --decode
-printf '\n'
-kubectl -n domotic get secret homeassistant-r2-credentials \
-  -o jsonpath='{.data.secret_access_key}' | base64 --decode
-printf '\n'
+```sh
+task restore:complete
 ```
 
-Create and verify an encrypted backup:
+Supply an owner username and password from the restored system. The task
+retains that credential in encrypted state and resumes MQTT, R2, URL, and
+other chart-derived reconciliation.
 
-```bash
-task backup
-task backup:list
+After recovery, confirm:
+
+- Home Assistant history and integrations are present;
+- a new automatic backup reaches R2;
+- MQTT and Zigbee2MQTT are connected;
+- PAN ID and channel match the private configuration;
+- the staged Zigbee2MQTT archive exists and is current;
+- `task plan` reports no unexpected changes.
+
+## Rotate recovery credentials
+
+Replace the Cloudflare account token before revoking the old token:
+
+```sh
+task cloudflare-token:update
+git add state/bootstrap.tfstate
+git commit -m "chore: rotate Cloudflare token"
 ```
 
-The script creates its plaintext staging directory with restrictive
-permissions, removes it on exit, uploads the `.tar.gz.age` archive, and verifies
-that R2 can read the uploaded object's metadata.
+After the first deployment, change the OpenTofu recovery passphrase with:
 
-## 6. Recover safely
-
-List the objects, then extract one into the ignored `restore/` directory:
-
-```bash
-task backup:list
-task backup:restore OBJECT=domotic/domotic-20260823T120000Z-abcdef123456.tar.gz.age
+```sh
+task recovery-passphrase:update
+git add state/bootstrap.tfstate
+git commit -m "chore: rotate recovery passphrase"
 ```
 
-The filename alone also works when `R2_PREFIX=domotic`. Restore refuses to
-replace an existing recovery directory and never overwrites the active
-Terraform, Helm, or Kubernetes configuration. Inspect the extracted state and
-configuration before copying selected files back or applying Kubernetes
-objects. Treat the extracted Terraform state and Secret JSON as sensitive.
+That task rolls both encrypted states to the new key. If it is interrupted,
+retry with the same new passphrase.
 
-Recreate the ignored Terraform Zigbee input directly from the recovered live
-Secret and ConfigMap without printing key values:
+References:
 
-```bash
-task keys:import SOURCE=restore/domotic-20260823T120000Z-abcdef123456
-```
-
-This writes `infra/zigbee-keys.tfvars.json` with mode 0600. Terraform loads it
-after `terraform.tfvars`, so the recovered keys override any request to
-generate replacements. It records PAN ID and channel as expected values rather
-than overrides: if the main configuration differs, Terraform stops before
-creating the restored network unless `force_update_secrets=true` is explicit.
-
-Official references:
-
-- [Cloudflare R2 bucket Terraform resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/r2_bucket)
+- [Home Assistant backups](https://www.home-assistant.io/common-tasks/general/#backups)
 - [Cloudflare R2 API tokens](https://developers.cloudflare.com/r2/api/tokens/)
-- [Cloudflare R2 with the AWS CLI](https://developers.cloudflare.com/r2/examples/aws/aws-cli/)
-- [Home Assistant Cloudflare R2 integration](https://www.home-assistant.io/integrations/cloudflare_r2/)
-- [age installation and usage](https://github.com/FiloSottile/age)
+- [OpenTofu state encryption](https://opentofu.org/docs/v1.12/language/state/encryption/)
+- [OpenTofu S3 backend](https://opentofu.org/docs/language/settings/backends/s3/)
+- [Zigbee2MQTT backup request](https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqttbridgerequestbackup)

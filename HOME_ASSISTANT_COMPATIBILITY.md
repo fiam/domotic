@@ -7,7 +7,7 @@ treated as a compatibility migration and tested on a new disposable volume.
 
 ## Verified baseline
 
-Last verified: **2026-08-31**
+Last verified: **2026-09-03**
 
 | Contract | Verified value |
 | --- | --- |
@@ -26,10 +26,12 @@ Last verified: **2026-08-31**
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
 | Custom integration delivery | no integration enabled by default; local and checksum-pinned remote render contracts verified |
+| Zigbee2MQTT snapshot staging | hourly CronJob; validated latest ZIP under `/config/.domotic/zigbee2mqtt` |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
-the image explicitly. Keep all four locations aligned.
+the image explicitly, and the README badge identifies the audited version.
+Keep all five locations aligned.
 
 Private deployments may retain an older image in `config/values.yaml` while
 updating their Domotic source pin. `task homeassistant:update` copies the
@@ -58,13 +60,14 @@ change in any Home Assistant release, including a patch release.
 | `templates/deployment.yaml` | The `.seed` adoption rules distinguish unchanged chart-managed YAML from user-modified files | An update could overwrite YAML edits or fail to restore a missing managed file. |
 | Restore mode | Starting with only `default_config:` exposes Home Assistant's native onboarding backup upload flow and a restored `/config` takes over | A release may require different bootstrap configuration or restore steps. |
 | Custom integration mounts | A user-selected integration remains compatible with the pinned Home Assistant image and can run from a read-only directory | Home Assistant can reject or fail to load the integration even though artifact verification and mounting succeeded. |
+| `templates/zigbee2mqtt-backup-cronjob.yaml` | Home Assistant continues archiving non-excluded files beneath `/config`, including the staged Zigbee2MQTT ZIP | A native backup may omit the Zigbee2MQTT recovery snapshot even though the CronJob succeeds. |
 
 The chart does not write private `.storage` files. In seed mode, the
 authenticated hook creates MQTT only when no MQTT entry exists, creates R2 only
 when no entry matches the declared bucket title, and reconciles HTTP settings
 through Home Assistant's trial-and-promotion workflow. It never updates
 existing integration credentials. Restore mode must never run the hook or any
-config flow. Terraform seed mode requires admin credentials so chart-derived
+config flow. OpenTofu seed mode supplies admin credentials so chart-derived
 settings are never silently skipped. Restore mode remains the credential-free
 path for manual onboarding or native backup recovery.
 
@@ -99,6 +102,8 @@ code, constants, schemas, migrations, and tests—not just release notes.
 - [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/agent.py)
 - [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/cloudflare_r2/backup.py)
 - [Native backup documentation](https://www.home-assistant.io/integrations/backup/)
+- [Core backup archive construction and exclusions](https://github.com/home-assistant/core/blob/2026.8.3/homeassistant/components/backup/manager.py)
+- [Zigbee2MQTT backup request](https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqttbridgerequestbackup)
 
 Inspect the tests beside these source files as well. They often document
 required payloads and migration behavior more precisely than user-facing docs.
@@ -111,8 +116,9 @@ required payloads and migration behavior more precisely than user-facing docs.
 3. Audit every user-configured custom integration against the proposed image.
    Upgrade or remove incompatible integrations before testing the stack.
 4. Run `task check`.
-5. Create a fresh Kind cluster, Terraform state namespace, R2 bucket, and Home
-   Assistant PVC. Supply the required seed-mode credentials.
+5. Create a fresh Kind cluster and Home Assistant PVC. Bootstrap isolated R2
+   state and backup buckets, then supply the required seed-mode credentials
+   through encrypted OpenTofu state.
 6. Deploy and verify onboarding, login, MQTT, Cloudflare R2, HTTP promotion,
    local routing, tunnel routing, and every configured custom integration.
 7. Inspect storage without printing credentials:
@@ -141,11 +147,15 @@ required payloads and migration behavior more precisely than user-facing docs.
     neither integration config flows nor owner seeding runs and that restored
     configuration survives another restart.
 11. Create and restore a test backup through the Cloudflare R2 integration.
-12. Update the verified date, versions, source links, and observations in this
-    document. Record only what was actually exercised.
+12. Confirm the Zigbee2MQTT snapshot CronJob shares Home Assistant's node,
+    produces a valid archive without replacing the last good file on failure,
+    and that a native backup and restore preserve the staged ZIP. Exercise the
+    separate empty-volume Zigbee2MQTT recovery procedure before relying on it.
+13. Update the README badge and the verified date, versions, source links, and
+    observations in this document. Record only what was actually exercised.
 
 Do not test an upgrade first against the production PVC. Preserve a native
-Home Assistant backup, the encrypted repository backup, and the Zigbee network
+Home Assistant backup, encrypted OpenTofu state, and the Zigbee network
 identity before changing production.
 
 ## Baseline observations
@@ -180,6 +190,13 @@ failure.
 Native-backup upload through R2 is verified. Download/decryption and a complete
 native restore were not exercised in this baseline and remain required before
 approving a Home Assistant version change for production.
+
+The Zigbee2MQTT snapshot CronJob was exercised against the live Kind test
+broker. Required pod affinity placed it on Home Assistant's node, and the
+documented MQTT request produced a valid staged ZIP. A forced MQTT failure
+preserved the last valid archive and removed its temporary files. Inclusion in
+a native R2 backup and restoration into a new Zigbee2MQTT volume have not yet
+been exercised.
 
 The chart renders with no custom integrations by default. The generic remote
 delivery contract was rendered with an underscored Home Assistant domain,

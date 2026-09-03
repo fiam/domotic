@@ -1,61 +1,53 @@
 # Home deployment
 
-This is the private deployment repository for your home. Edit the files under
-`config/` and run the Task commands here. The Domotic code is downloaded
-automatically at the version recorded in `Taskfile.yml`.
+This private repository contains the configuration for one Domotic
+installation. The public source is downloaded at the commit recorded in
+`Taskfile.yml`.
 
-Commands use the current kubeconfig context and honor `KUBECONFIG`. Check
-`kubectl config current-context` before planning or deploying. The cluster must
-meet the [Domotic requirements](https://github.com/fiam/domotic#supported-kubernetes-environments).
-If the server was installed with the k3s guide, `task k3s:context` can import
-its kubeconfig.
+Start by editing:
 
-Configure SOPS with a master-key backend of your choice. Domotic does not
-create, locate, or back up that key; `sops` uses its normal configuration,
-environment variables, key files, agents, or KMS credentials.
+- `config/bootstrap.tfvars`: Cloudflare account and a unique R2 bucket prefix;
+- `config/infra/terraform.tfvars`: domain, routes, namespace, and Zigbee radio;
+- `config/values.yaml`: storage, Zigbee adapter, and workload settings.
 
-Create the encrypted credential document without committing its temporary
-plaintext input:
+Create the persistent R2 foundation:
 
 ```sh
-cp config/secrets.yaml.example config/secrets.yaml
-chmod 0600 config/secrets.yaml
-${EDITOR:-vi} config/secrets.yaml
-sops encrypt --filename-override config/secrets.sops.yaml \
-  < config/secrets.yaml > config/secrets.sops.yaml
-rm config/secrets.yaml
-git add config/secrets.sops.yaml
+task bootstrap
 ```
 
-The encrypted document must contain `CLOUDFLARE_API_TOKEN` and
-`HOMEASSISTANT_ADMIN_PASSWORD`. `HOMEASSISTANT_BACKUP_PASSWORD` is optional;
-omit it for unencrypted backups in the private R2 bucket, or set it to enable
-Home Assistant's native backup encryption. Keep `config/secrets.sops.yaml`
-under version control and keep the SOPS master key elsewhere.
+The task prompts for the Cloudflare account token and a recovery passphrase.
+The state file is encrypted; keep the passphrase in a password manager outside
+this repository.
 
-Start with:
+Deployment commands use the current kubeconfig context:
 
 ```sh
-task --list
+git add .
 kubectl config current-context
-kubectl get nodes
-task secrets:check
 task check
 task plan
+
+git commit -m "chore: configure home deployment"
+git remote add origin <private-repository-url>
+git push -u origin main
+
+task deploy
+task status
+task credentials:show
 ```
 
-Use `task secrets:edit` for later changes and `task deploy` to deploy. For a
-native Home Assistant backup import, run `task restore:plan` followed by `task
-restore`; those tasks do not require the Home Assistant admin password.
+Home Assistant writes daily native backups to the dedicated R2 backup bucket.
+The next native backup also includes the latest Zigbee2MQTT data snapshot
+staged by the chart.
 
-Use `task domotic:update REF=main` to update the pinned Domotic code without
-deploying it. After reviewing that change and creating backups, `task
-homeassistant:update` deploys the Home Assistant version verified by the new
-pin without running Terraform. `task homeassistant:deploy` performs a Helm-only
-deployment without changing either version.
+For a native restore, run `task restore:plan` and `task restore`, upload the
+backup in Home Assistant, then run `task restore:complete`. Use
+`task credentials:update` after changing the owner password in Home Assistant.
 
-Keep `config/infra/terraform.tfvars`, `config/values.yaml`, and the encrypted
-SOPS document under version control. Never commit `config/secrets.yaml`,
-`config/backup.env`, generated Terraform/Helm files, Zigbee keys, restored
-archives, or plaintext credentials. See the public repository's
-`PRIVATE_DEPLOYMENT.md` for credentials, backups, recovery, and upgrades.
+Use `task domotic:update REF=main` to update the public source pin and
+`task homeassistant:update` to deploy the Home Assistant version verified by
+that revision.
+
+See the public repository's `PRIVATE_DEPLOYMENT.md` and `BACKUP.md` for token
+permissions, recovery, and credential rotation.

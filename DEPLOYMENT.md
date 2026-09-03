@@ -1,9 +1,8 @@
 # Install on a single-node k3s server
 
 This is the documented reference setup for a common home-server environment.
-Domotic itself supports any Kubernetes distribution that meets the
-[cluster requirements](README.md#supported-kubernetes-environments); use this
-guide only when choosing k3s.
+Domotic itself supports any Kubernetes distribution that ships Gateway API;
+use this guide only when choosing k3s.
 
 This guide prepares a new Debian or Ubuntu server for Domotic. It installs
 k3s, enables Traefik's Kubernetes Gateway API provider, configures remote
@@ -136,7 +135,7 @@ Traefik is exposed through k3s ServiceLB on the server's ports 80 and 443.
 The k3s admin kubeconfig grants unrestricted cluster access. Copy it only to a
 trusted administrator machine and keep it private. After initializing the
 private deployment repository in
-[the README](README.md#2-create-a-private-deployment-repository), run this from
+[the README](README.md#install), run this from
 that repository to merge the server configuration into your kubeconfig under
 the distinct name `domotic`:
 
@@ -283,13 +282,15 @@ avahi-resolve-host-name -4 zigbee2mqtt.local
 ## 6. Attach the application routes to Traefik
 
 On the administrator machine, continue from
-[the private deployment workflow](README.md#4-configure-validate-and-deploy).
-Fill in `config/infra/terraform.tfvars`. If enabling R2, give the account API token
-**Workers R2 Storage Read** and **Write**, set `cloudflare_api_token_id`, and
-configure `r2_backup_bucket_name` as described in [BACKUP.md](BACKUP.md). Customize
-`config/values.yaml`, including the serial adapter and site details. Configure
-and commit the SOPS-encrypted `config/secrets.sops.yaml`; do not add token or
-password assignments to the tracked Terraform variables.
+[the private deployment workflow](README.md#configure-and-deploy).
+First run `task bootstrap` as described there. It creates separate R2 buckets
+for encrypted OpenTofu state and Home Assistant backups, plus a bucket-scoped
+credential for each. Then fill in `config/infra/terraform.tfvars` and customize
+`config/values.yaml`, including the serial adapter and storage settings.
+
+Do not put the Cloudflare token, passwords, or generated Zigbee keys in either
+configuration file. They are retained only in encrypted OpenTofu state. Keep
+the recovery passphrase in a password manager.
 
 The repository installs no custom Home Assistant integration by default. If
 this deployment needs one, declare its public immutable archive in
@@ -298,23 +299,23 @@ private Helm values. Follow [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md)
 for checksum, archive-path, upgrade, and removal requirements.
 
 For a new Home Assistant installation, keep
-`homeassistant_bootstrap_mode="seed"`. The remote task decrypts the configured
-Home Assistant password with SOPS and Terraform creates a Secret. A one-shot
-Helm hook creates the first owner through Home Assistant's built-in but
-undocumented onboarding flow, completes the remaining steps, reconciles core
-and HTTP settings, and creates missing MQTT and R2 entries through their config
-flows. Its temporary login token is revoked. It never replaces an existing
-user, password, or integration entry.
+`homeassistant_bootstrap_mode="seed"`. OpenTofu generates and retains the first
+owner credential, then creates the Kubernetes Secret consumed by a one-shot
+Helm hook. The hook uses Home Assistant's built-in but undocumented onboarding
+flow, completes the remaining steps, reconciles core and HTTP settings, and
+creates missing MQTT and R2 entries through their config flows. Its temporary
+login token is revoked. It never replaces an existing user, password, or
+integration entry.
 
-For a native Home Assistant backup recovery onto a blank volume, run `task
-restore:plan` followed by `task restore`. These targets temporarily select
-restore mode without editing the tracked seed setting or reading an admin
-password. Open Home Assistant, choose **Upload backup**, and use the credentials
-and emergency-kit key from the backed-up system. After the restore succeeds,
-update the encrypted password to an existing restored owner before the next
-normal deployment.
+For a native Home Assistant backup recovery onto a blank volume, run
+`task restore:plan` followed by `task restore`. These targets temporarily select
+restore mode without editing the tracked seed setting or creating an owner.
+Open Home Assistant, choose **Upload backup**, and use the credentials and
+emergency-kit key from the backed-up system. After the restore succeeds, run
+`task restore:complete` to record an existing restored owner credential in
+encrypted state and resume normal reconciliation.
 
-Use the following route attachment for k3s's packaged Traefik. Terraform
+Use the following route attachment for k3s's packaged Traefik. OpenTofu
 supplies both route hostnames from `local_http_hostnames`, so do not repeat them
 in `config/values.yaml`:
 
@@ -337,19 +338,20 @@ zigbee2mqtt:
 ```
 
 Validate, review, and deploy from the private repository root. These tasks use
-the imported context and do not change your current `kubectl` context:
+the current `kubectl` context and do not change it:
 
 ```sh
+kubectl config current-context
 task check
-task secrets:check
 task plan
 task deploy
 task status
 ```
 
-The infrastructure task captures any generated Zigbee keys into the ignored
-`config/infra/zigbee-keys.tfvars.json`, which subsequent plans load
-automatically.
+The first apply generates the Home Assistant owner password and Zigbee key
+material in encrypted R2 state. Use `task credentials:show` when the initial
+login is needed. Import an existing Zigbee identity before the first deploy
+with `task zigbee:import SOURCE=/path/to/zigbee-keys.tfvars.json`.
 
 Verify that Traefik accepted the routes:
 
@@ -365,12 +367,12 @@ development-only coordinator emulator.
 
 ## 7. Configure off-host backups
 
-When R2 is enabled before the first Helm deployment, Terraform creates the
-bucket and derived S3 credential Secret. In seed mode, the chart creates Home
-Assistant's official Cloudflare R2 backup location through its validated config
-flow, then configures daily backups to that private bucket and retains seven
-copies by default. Set `homeassistant_backup_password` to enable native backup
-encryption. Set `homeassistant_automatic_backups` to change the initial
+`task bootstrap` creates the private R2 backup bucket and a credential scoped
+to that bucket. In seed mode, the chart creates Home Assistant's official
+Cloudflare R2 backup location through its validated config flow, then
+configures daily backups and retains seven copies by default. Set
+`homeassistant_backup_encryption_enabled = true` to generate a native backup
+password. Use `homeassistant_automatic_backups` to change the initial
 retention/time or disable scheduling. Existing integration entries, backup
 settings, and native restores are preserved.
 
@@ -378,20 +380,13 @@ For a newly initialized encrypted schedule, preserve the configured password
 and download Home Assistant's emergency kit before relying on native backups.
 A preserved existing schedule keeps its existing Home Assistant emergency-kit
 key instead. Recovery details are in
-[BACKUP.md](BACKUP.md#3-configure-home-assistant-backups).
+[BACKUP.md](BACKUP.md#automatic-home-assistant-backups).
 
-Configure the age identity and local `backup.env` described in
-[BACKUP.md](BACKUP.md), then create and verify the separate encrypted
-configuration backup from the administrator machine:
-
-```sh
-task backup
-task backup:list
-```
-
-This captures the private deployment configuration, Terraform state, and live
-keys without uploading them in plaintext. It does not include PersistentVolume
-data.
+The chart also stages a validated Zigbee2MQTT data-directory archive inside
+Home Assistant's configuration volume every hour. The next native backup then
+contains both applications' recoverable data. Encrypted OpenTofu state in the
+separate state bucket retains generated credentials and Zigbee identity.
+Recovery and verification steps are in [BACKUP.md](BACKUP.md).
 
 ## Firewall notes
 
@@ -440,6 +435,5 @@ Refresh any remote copies of `/etc/rancher/k3s/k3s.yaml` afterward.
 - [Traefik Gateway API provider](https://doc.traefik.io/traefik/providers/kubernetes-gateway/)
 - [Avahi address publication](https://manpages.debian.org/trixie/avahi-utils/avahi-publish-address.1.en.html)
 - [Avahi daemon configuration](https://manpages.debian.org/trixie/avahi-daemon/avahi-daemon.conf.5.en.html)
-- [Cloudflare R2 bucket Terraform resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/r2_bucket)
+- [Cloudflare R2 bucket OpenTofu resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/r2_bucket)
 - [Cloudflare R2 with the AWS CLI](https://developers.cloudflare.com/r2/examples/aws/aws-cli/)
-- [age installation and usage](https://github.com/FiloSottile/age)

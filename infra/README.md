@@ -1,127 +1,93 @@
-# Terraform infrastructure
+# OpenTofu infrastructure
 
-The infrastructure layer manages Cloudflare resources, an optional R2 backup
-bucket, Kubernetes secrets and configuration, protected Zigbee network
-settings, and the values passed to the Helm chart. Its state is stored as a
-Kubernetes Secret in the `terraform-state` namespace.
+The infrastructure configuration manages the Cloudflare tunnel and DNS,
+Kubernetes configuration consumed by Helm, generated Home Assistant
+credentials, and protected Zigbee network identity.
 
-From the repository root, create the ignored private variables file and edit
-its placeholders:
+Its state is encrypted by OpenTofu before being written to the installation's
+R2 state bucket. The separate [`bootstrap`](../bootstrap) configuration creates
+that bucket, the Home Assistant backup bucket, and one scoped credential for
+each.
 
-```sh
-cp infra/terraform.tfvars.example infra/terraform.tfvars
-task infra:plan
-task infra:apply
-```
+Use the tasks from a generated private deployment repository for normal
+operation. They decrypt bootstrap state in memory, initialize the R2 backend,
+and provide the required process environment. Running `tofu` directly requires
+recreating that environment and is intended only for development.
 
-For a long-lived installation, prefer the independent private repository in
-[PRIVATE_DEPLOYMENT.md](../PRIVATE_DEPLOYMENT.md). `CONFIG_DIR` mirrors the
-repository layout: Terraform inputs and generated values live under
-`CONFIG_DIR/infra`, while Helm values and `backup.env` live at its root. The
-default remains this repository, preserving the direct-clone workflow.
+## Configuration
 
-The tasks use the current kubeconfig context. `kubectl` and Helm read
-`KUBECONFIG` directly; the Taskfile maps the same path list to Terraform's
-`KUBE_CONFIG_PATHS` because the Kubernetes provider does not read `KUBECONFIG`.
-For example:
+The tracked `config/infra/terraform.tfvars` contains non-secret desired state:
 
-```sh
-KUBECONFIG=/path/to/config task infra:plan STATE_NAMESPACE=another-namespace
-```
+- Cloudflare domain, route hostname, and tunnel name;
+- Kubernetes namespace and Helm release name;
+- local HTTP route names and client-facing URLs;
+- Home Assistant owner profile and backup policy;
+- Zigbee PAN ID and channel;
+- checksum-pinned custom integrations.
 
-`task infra:apply` writes `infra/helm-values.yaml` from Terraform outputs for
-the chart layer and captures the live cryptographic Zigbee identity in
-`infra/zigbee-keys.tfvars.json`. This generated file, `terraform.tfvars`, state
-files, and the `.terraform/` working directory are ignored by Git. The
-dependency lock file is tracked and should be committed when provider
-selections intentionally change.
+It must not contain the Cloudflare token, recovery passphrase, generated owner
+password, R2 credentials, or Zigbee keys.
 
-The component Taskfile can also be used directly:
+OpenTofu uses the current kubeconfig context and honors `KUBECONFIG`. Confirm
+the target before every plan or apply:
 
 ```sh
-cd infra
+kubectl config current-context
 task plan
-task apply
-task keys:capture
 ```
 
-Use `CONFIG_DIR` for an external private configuration. Individual
-`TF_VARS_FILE`, `TF_KEYS_FILE`, and `HELM_VALUES_FILE` overrides remain
-available for isolated configurations such as the end-to-end Kind test.
-The nonstandard `KUBE_CONTEXT` override remains available for isolated
-automation such as the Kind tests. Normal installations should select their
-current context with `kubectl config use-context`. Absolute configuration paths
-are recommended when invoking this component Taskfile directly:
+## Generated credentials
+
+`random_password.homeassistant_admin` creates the initial owner password.
+`terraform_data.homeassistant_credentials` retains the effective username and
+password in encrypted state with changes ignored during ordinary plans. This
+prevents a password changed in Home Assistant from being reset accidentally.
+
+`task credentials:update` explicitly replaces that retained value. It is also
+used after restoring a native backup, where the owner already exists inside
+the restored Home Assistant database.
+
+The Zigbee network key and extended PAN ID follow the same rule: generated on
+the first apply and retained in encrypted state. PAN ID and channel stay in the
+tracked configuration because they are not secret, but changing any protected
+identity value still requires an explicit override.
+
+## Helm values
+
+`task infra:apply` writes an owner-only generated values file containing
+references to Kubernetes Secrets and ConfigMaps. It does not contain secret
+values. The root deploy task applies that file before the private Helm values.
+
+Generated values configure:
+
+- the MQTT service used by Home Assistant and Zigbee2MQTT;
+- local and external Home Assistant URLs;
+- local HTTPRoute hostnames;
+- the bucket-scoped Cloudflare R2 backup credential;
+- automatic native backup defaults;
+- the Zigbee2MQTT snapshot CronJob;
+- checksum-pinned custom integration mounts.
+
+## Restore mode
+
+`task restore` overrides `homeassistant_bootstrap_mode` to `restore`. The chart
+starts with only the minimal Home Assistant configuration required to expose
+the native backup upload flow. It does not run onboarding or integration
+reconciliation.
+
+After the native backup is restored, `task restore:complete` records an
+existing owner credential in encrypted state and returns to normal seed mode.
+
+## Static checks
+
+The static suite does not contact R2, Cloudflare, or Kubernetes:
 
 ```sh
-task apply \
-  KUBE_CONTEXT=kind-ha \
-  STATE_NAMESPACE=kind-ha-terraform-state \
-  TF_VARS_FILE=kind-ha.tfvars \
-  TF_KEYS_FILE=kind-ha-zigbee-keys.tfvars.json \
-  HELM_VALUES_FILE=helm-values-kind-ha.yaml
+task infra:format-check
+task infra:validate
+task infra:test
 ```
 
-The key file contains `network_key`, `ext_pan_id`, the switch that disables
-further generation, and the live PAN ID/channel as recovery guards. PAN ID and
-channel remain ordinary variables in the main file: the recorded values do not
-override them, but Terraform blocks a mismatch unless
-`force_update_secrets=true`. `task infra:backup` refreshes the portable file
-from the live Secret and ConfigMap before encrypting and uploading the archive.
-
-`local_http_hostnames` controls the two Gateway API route matches.
-`local_http_urls` is optional and defaults to `http://` plus those hostnames;
-set it explicitly when the client-visible port differs, such as port 8080 for
-Kind. Zigbee2MQTT receives this as `frontend.url`, matching its current
-configuration schema. In seed mode, the Helm onboarding hook reconciles Home
-Assistant's external and internal URLs through its authenticated WebSocket API
-on every install or upgrade. They remain editable in the UI, but the next
-deployment restores the Terraform values instead of treating UI changes as
-persistent drift.
-
-`homeassistant_bootstrap_mode="seed"` adopts the chart-managed YAML files and
-requires `homeassistant_onboarding.password`. The owner name, username, and
-language default to `Home Administrator`, `admin`, and `en`. Terraform places
-those values in the `homeassistant-onboarding` Secret. Helm then completes Home
-Assistant's built-in but undocumented onboarding flow and uses the temporary
-admin session to reconcile core and HTTP settings and to create missing MQTT
-and R2 entries through their config flows. It revokes the token afterward.
-Existing users and integration entries are never overwritten, so this is not a
-password- or credential-rotation mechanism.
-
-`homeassistant_remote_custom_components` optionally passes user-selected,
-public, immutable repository or release archives to the Home Assistant chart.
-Kubernetes verifies each declared SHA-256 and mounts the extracted integration
-from an isolated ephemeral volume. These URLs and checksums are non-secret
-Terraform output: never embed credentials or expiring signed query strings.
-Repository-local integrations can use the chart's `customComponents.local`
-list in private Helm values instead. See
-[the custom integration guide](../CUSTOM_INTEGRATIONS.md) for both forms.
-
-When an R2 bucket is configured in seed mode, that same temporary admin session
-initializes daily backups to the R2 agent with seven-copy retention. They are
-unencrypted unless `homeassistant_backup_password` is set; when it is,
-Terraform creates `homeassistant-backup-encryption` for that initialization.
-`homeassistant_automatic_backups` can change the first-boot retention/time or
-disable the schedule; after initialization, Home Assistant owns the settings
-and later UI changes are preserved. An existing schedule retains its existing
-protection setting and, when encrypted, its emergency-kit key may differ from
-the Terraform Secret.
-
-Use `homeassistant_bootstrap_mode="restore"` before deploying onto a blank
-volume that will receive a native Home Assistant backup. The chart creates only
-a minimal temporary `configuration.yaml` needed to expose the welcome screen;
-it does not seed the owner, MQTT, R2, HTTP configuration, automations, scripts,
-or scenes. The restored `/config` replaces that temporary file. Switching back
-to `seed` afterward adopts and preserves the restored files, but requires the
-credentials of an existing restored owner for authenticated reconciliation.
-
-Setting `r2_backup_bucket_name` creates the private backup bucket with a
-`prevent_destroy` lifecycle guard. The account API token then also needs
-**Workers R2 Storage Read** and **Write**, and `cloudflare_api_token_id` must
-contain that token's 32-character identifier. Terraform derives the
-corresponding R2 S3 credentials, stores them in the
-`homeassistant-r2-credentials` Kubernetes Secret, and passes only the Secret
-reference to Helm. The raw Cloudflare token does not enter the application
-namespace. Follow [the backup guide](../BACKUP.md) for Home Assistant and
-encrypted configuration backups.
+Tests use mocked external providers. A live Kind test remains required for
+Home Assistant's private onboarding, WebSocket, integration, and backup API
+contracts; follow [HOME_ASSISTANT_COMPATIBILITY.md](../HOME_ASSISTANT_COMPATIBILITY.md).

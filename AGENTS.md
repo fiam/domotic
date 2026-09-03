@@ -10,12 +10,13 @@ configured, also read and follow
 
 Before changing the Kind topology, Colima configuration, development routes,
 or destroying a local development cluster, read and follow
-[DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md). The Kind cluster holds
-its own Terraform backend; deleting it without first destroying the external
-test infrastructure or preserving that state can orphan Cloudflare resources.
+[DEVELOPMENT_NETWORKING.md](DEVELOPMENT_NETWORKING.md). OpenTofu state is kept
+in Cloudflare R2, but destroying a cluster before applying or destroying its
+current configuration can still leave Kubernetes resources unavailable for a
+clean refresh.
 
-Before changing external configuration paths, the SOPS credential boundary,
-recovery commands, or the remote Taskfile, read and follow
+Before changing external configuration paths, the encrypted OpenTofu state
+boundary, recovery commands, or the remote Taskfile, read and follow
 [PRIVATE_DEPLOYMENT.md](PRIVATE_DEPLOYMENT.md). Keep the remote Taskfile
 self-contained: Task downloads it without exposing the source repository.
 
