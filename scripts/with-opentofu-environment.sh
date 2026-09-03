@@ -132,4 +132,15 @@ export AWS_EC2_METADATA_DISABLED=true
 export TF_DATA_DIR="$main_data_dir"
 unset bootstrap_runtime
 
+# The HashiCorp Kubernetes provider intentionally ignores KUBECONFIG. Bridge
+# kubectl's standard setting (or its default path) to the provider-specific
+# variables while preserving an explicit provider override.
+if [[ -z "${KUBE_CONFIG_PATH:-}" && -z "${KUBE_CONFIG_PATHS:-}" ]]; then
+  if [[ -n "${KUBECONFIG:-}" ]]; then
+    export KUBE_CONFIG_PATHS="$KUBECONFIG"
+  elif [[ -f "${HOME}/.kube/config" ]]; then
+    export KUBE_CONFIG_PATH="${HOME}/.kube/config"
+  fi
+fi
+
 exec "$@"

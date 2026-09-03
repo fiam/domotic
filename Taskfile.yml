@@ -133,6 +133,9 @@ tasks:
 
   deploy-dev:
     desc: Create Kind and deploy the complete development stack
+    vars:
+      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .TOFU_VARS_PATH}}'
+      DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - task: dev:create
         vars:
@@ -147,21 +150,42 @@ tasks:
           exit 1
         }
       - >-
+        TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.RESOLVED_CONFIG_DIR}}" --
         task --dir "{{.ROOT_DIR}}" _deploy-dev
         CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
 
   _deploy-dev:
-    internal: true
+    # The credential wrapper invokes this in a child Task process, so Task
+    # must permit it as an entrypoint.
     cmds:
       - task: infra:apply
-      - task: helm:deploy
-        vars:
-          VALUES_FILE: '{{.ROOT_DIR}}/examples/values-kind.yaml'
+      - |
+        release_name="$(tofu -chdir="{{.ROOT_DIR}}/infra" output -raw helm_release_name)"
+        namespace="$(tofu -chdir="{{.ROOT_DIR}}/infra" output -raw kubernetes_namespace)"
+        case "$release_name" in
+          ''|*[!a-z0-9.-]*|[.-]*|*[.-])
+            echo 'OpenTofu returned an invalid Helm release name.' >&2
+            exit 1
+            ;;
+        esac
+        case "$namespace" in
+          ''|*[!a-z0-9-]*|-*|*-)
+            echo 'OpenTofu returned an invalid Kubernetes namespace.' >&2
+            exit 1
+            ;;
+        esac
+        task --dir "{{.ROOT_DIR}}" helm:deploy \
+          RELEASE_NAME="$release_name" \
+          NAMESPACE="$namespace" \
+          VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml"
 
   destroy-dev:
     desc: Remove the development deployment, infrastructure, and Kind cluster
+    vars:
+      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .TOFU_VARS_PATH}}'
+      DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - |
         expected_context='kind-{{.DEV_CLUSTER_NAME}}'
@@ -172,6 +196,7 @@ tasks:
           exit 1
         }
       - >-
+        TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.RESOLVED_CONFIG_DIR}}" --
         task --dir "{{.ROOT_DIR}}" _destroy-dev
@@ -181,7 +206,25 @@ tasks:
           CLUSTER_NAME: '{{.DEV_CLUSTER_NAME}}'
 
   _destroy-dev:
-    internal: true
+    # Keep this callable for the same reason as _deploy-dev.
     cmds:
-      - task: helm:uninstall
+      - task: infra:init
+      - |
+        release_name="$(tofu -chdir="{{.ROOT_DIR}}/infra" output -raw helm_release_name)"
+        namespace="$(tofu -chdir="{{.ROOT_DIR}}/infra" output -raw kubernetes_namespace)"
+        case "$release_name" in
+          ''|*[!a-z0-9.-]*|[.-]*|*[.-])
+            echo 'OpenTofu returned an invalid Helm release name.' >&2
+            exit 1
+            ;;
+        esac
+        case "$namespace" in
+          ''|*[!a-z0-9-]*|-*|*-)
+            echo 'OpenTofu returned an invalid Kubernetes namespace.' >&2
+            exit 1
+            ;;
+        esac
+        task --dir "{{.ROOT_DIR}}" helm:uninstall \
+          RELEASE_NAME="$release_name" \
+          NAMESPACE="$namespace"
       - task: infra:destroy

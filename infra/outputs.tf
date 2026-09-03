@@ -34,6 +34,11 @@ output "kubernetes_namespace" {
   value       = var.kubernetes_namespace
 }
 
+output "helm_release_name" {
+  description = "Helm release name for the Domotic application"
+  value       = var.helm_release_name
+}
+
 output "local_http_hostnames" {
   description = "Hostnames assigned to the local Home Assistant and Zigbee2MQTT HTTPRoutes"
   value       = var.local_http_hostnames

@@ -109,6 +109,19 @@ if grep -Eq 'KUBE_CONTEXT.*default "[^"]+"' \
   fail "a production Taskfile selects a default Kubernetes context"
 fi
 
+# These helpers are invoked by a new Task process after the runtime wrapper
+# injects credentials. Task rejects internal tasks at a process entrypoint.
+for runtime_task in _deploy-dev _destroy-dev; do
+  if awk -v header="  ${runtime_task}:" '
+    $0 == header { in_task = 1; next }
+    in_task && $0 ~ /^  [[:alnum:]_-]+:/ { exit }
+    in_task && $0 == "    internal: true" { found = 1 }
+    END { exit !found }
+  ' "$repository_root/Taskfile.yml"; then
+    fail "$runtime_task cannot be internal when invoked by the runtime wrapper"
+  fi
+done
+
 # Validate the runtime wrapper without printing any of its test credentials.
 install -d -m 0700 "$temp_root/bin" "$temp_root/runtime/config" "$temp_root/runtime/state"
 printf '%s\n' 'r2_bucket_prefix = "test-home"' > "$temp_root/runtime/config/bootstrap.tfvars"
@@ -128,6 +141,8 @@ chmod 0700 "$temp_root/bin/tofu"
 
 PATH="$temp_root/bin:$PATH" \
 DOMOTIC_RECOVERY_PASSPHRASE=domotic-test-recovery-passphrase \
+KUBECONFIG="$temp_root/kube-a:$temp_root/kube-b" \
+  env -u KUBE_CONFIG_PATH -u KUBE_CONFIG_PATHS \
   "$repository_root/scripts/with-opentofu-environment.sh" \
   runtime "$repository_root" "$temp_root/runtime" "$temp_root/runtime/config" -- \
   sh -c '
@@ -137,6 +152,8 @@ DOMOTIC_RECOVERY_PASSPHRASE=domotic-test-recovery-passphrase \
     test "$TF_VAR_r2_backup_bucket_name" = test-home-backups
     test "$AWS_ACCESS_KEY_ID" = state-id
     test "$AWS_SECRET_ACCESS_KEY" = state-secret
+    test "$KUBE_CONFIG_PATHS" = "'$temp_root'/kube-a:'$temp_root'/kube-b"
+    test -z "${KUBE_CONFIG_PATH:-}"
     test "$(printf "%s" "$TF_VAR_r2_backup_credentials" | jq -r .access_key_id)" = backup-id
   ' || fail "runtime wrapper did not inject bootstrap-state values"
 
