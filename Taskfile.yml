@@ -53,6 +53,7 @@ tasks:
     cmds:
       - bash -n scripts/*.sh scripts/tests/*.sh
       - bash scripts/tests/private-deployment.sh
+      - bash scripts/tests/dev-sync-custom-integrations.sh
 
   config:check:
     desc: Validate a private deployment configuration and its Git boundaries

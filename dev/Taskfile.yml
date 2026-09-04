@@ -7,6 +7,9 @@ vars:
   DEV_HOST_ADDRESS: '{{.HOST_ADDRESS | default "127.0.0.1"}}'
   HOMEASSISTANT_HTTP_HOSTNAME: '{{.HOMEASSISTANT_HOSTNAME | default "homeassistant.local"}}'
   ZIGBEE2MQTT_HTTP_HOSTNAME: '{{.ZIGBEE2MQTT_HOSTNAME | default "zigbee2mqtt.local"}}'
+  INTEGRATION_SOURCE: '{{if isAbs (toString .SOURCE)}}{{.SOURCE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .SOURCE)}}{{end}}'
+  INTEGRATION_NAMESPACE: '{{.HA_NAMESPACE | default ""}}'
+  INTEGRATION_INSTANCE: '{{.HA_INSTANCE | default ""}}'
 
 tasks:
   default:
@@ -98,3 +101,22 @@ tasks:
     desc: Follow Zigbee coordinator emulator logs
     cmds:
       - kubectl --context "{{.DEV_KUBE_CONTEXT}}" --namespace zstackmulator logs --selector app=zstackmulator --tail=100 --follow
+
+  integrations:sync:
+    desc: Sync local custom integrations into Kind and restart Home Assistant
+    requires:
+      vars: [SOURCE]
+    preconditions:
+      - sh: command -v kubectl >/dev/null
+        msg: Install kubectl before syncing custom integrations.
+      - sh: command -v jq >/dev/null
+        msg: Install jq before syncing custom integrations.
+      - sh: command -v tar >/dev/null
+        msg: Install tar before syncing custom integrations.
+    cmds:
+      - >-
+        ../scripts/dev-sync-custom-integrations.sh
+        "{{.INTEGRATION_SOURCE}}"
+        "{{.DEV_KUBE_CONTEXT}}"
+        "{{.INTEGRATION_NAMESPACE}}"
+        "{{.INTEGRATION_INSTANCE}}"

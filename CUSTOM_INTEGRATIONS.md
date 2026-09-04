@@ -87,6 +87,29 @@ submodule. It must be present before Helm renders the chart and must contain
 the integration's `manifest.json`. No local repository is configured or
 required by this project itself.
 
+## Iterating against Kind
+
+For local development, copy the current working tree of one or more custom
+integrations directly into the Home Assistant volume:
+
+```sh
+task dev:integrations:sync SOURCE=../my-integration
+```
+
+`SOURCE` may be an integration repository containing `custom_components`, the
+`custom_components` directory itself, or one integration directory containing
+`manifest.json`. The task validates every domain, refuses symbolic links and
+read-only chart-managed mounts, stages the new files on the Home Assistant
+volume, preserves the replaced files, and restarts Home Assistant once.
+It discovers the only Home Assistant deployment in the Kind cluster; set
+`HA_NAMESPACE` and `HA_INSTANCE` to disambiguate if the cluster contains more
+than one.
+
+The synced files are intentionally outside OpenTofu and Helm. They survive pod
+restarts but not deletion of the Kind cluster. This workflow is for testing a
+local working tree only; use an immutable, checksum-pinned artifact for a
+long-lived deployment.
+
 ## Upgrades and removal
 
 Custom integrations execute inside Home Assistant and are coupled to its
