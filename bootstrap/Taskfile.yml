@@ -1,8 +1,8 @@
 version: '3'
 
 vars:
-  BOOTSTRAP_RESOLVED_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default "terraform.tfvars"}}'
-  BOOTSTRAP_RESOLVED_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE | default "bootstrap.tfstate"}}'
+  BOOTSTRAP_RESOLVED_VARS_FILE: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default "terraform.tfvars"}}'
+  BOOTSTRAP_RESOLVED_STATE_FILE: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default "bootstrap.tfstate"}}'
   BOOTSTRAP_CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
 
 tasks:

@@ -29,7 +29,7 @@ fi
 (( ${#new_passphrase} >= 16 )) || fail "the new recovery passphrase must contain at least 16 characters"
 [[ "$new_passphrase" != "$old_passphrase" ]] || fail "the new recovery passphrase must differ from the current one"
 
-bootstrap_vars_file="${BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
+bootstrap_vars_file="${DOMOTIC_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
 tofu_vars_file="${TF_VARS_FILE:-$config_dir/infra/terraform.tfvars}"
 [[ -f "$bootstrap_vars_file" ]] || fail "missing bootstrap variables: $bootstrap_vars_file"
 [[ -f "$tofu_vars_file" ]] || fail "missing OpenTofu variables: $tofu_vars_file"

@@ -42,8 +42,8 @@ case "$mode" in
   *) usage ;;
 esac
 
-bootstrap_vars_file="${BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
-bootstrap_state_file="${BOOTSTRAP_STATE_FILE:-$private_root/state/bootstrap.tfstate}"
+bootstrap_vars_file="${DOMOTIC_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
+bootstrap_state_file="${DOMOTIC_BOOTSTRAP_STATE_FILE:-$private_root/state/bootstrap.tfstate}"
 bootstrap_data_dir="${BOOTSTRAP_TF_DATA_DIR:-$private_root/.domotic/tofu/bootstrap}"
 main_data_dir="${MAIN_TF_DATA_DIR:-$private_root/.domotic/tofu/main}"
 

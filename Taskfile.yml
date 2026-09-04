@@ -5,8 +5,8 @@ includes:
     taskfile: ./bootstrap
     dir: ./bootstrap
     vars:
-      BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
-      BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
+      DOMOTIC_BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
+      DOMOTIC_BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
   infra:
     taskfile: ./infra
     dir: ./infra
@@ -29,8 +29,8 @@ includes:
 vars:
   ROOT_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default .ROOT_DIR}}'
   ROOT_CONFIG_DIR: '{{if isAbs (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{.ROOT_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{end}}'
-  ROOT_BOOTSTRAP_VARS_PATH: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
-  ROOT_BOOTSTRAP_STATE_PATH: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_CONFIG_DIR)}}'
+  ROOT_BOOTSTRAP_VARS_PATH: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_BOOTSTRAP_STATE_PATH: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_DIR)}}'
   ROOT_TOFU_VARS_PATH: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
   ROOT_GENERATED_HELM_VALUES_PATH: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
   ROOT_TOFU_HELM_VALUES_PATH: '{{.TERRAFORM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
@@ -39,8 +39,6 @@ vars:
 
 env:
   CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-  BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
-  BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
   TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
   HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
   TERRAFORM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
@@ -140,9 +138,10 @@ tasks:
       - >-
         ./scripts/with-opentofu-environment.sh
         bootstrap "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
+        env
+        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.ROOT_BOOTSTRAP_VARS_PATH}}"
+        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.ROOT_BOOTSTRAP_STATE_PATH}}"
         task --dir "{{.ROOT_DIR}}" bootstrap:apply
-        BOOTSTRAP_VARS_FILE="{{.ROOT_BOOTSTRAP_VARS_PATH}}"
-        BOOTSTRAP_STATE_FILE="{{.ROOT_BOOTSTRAP_STATE_PATH}}"
 
   deploy-dev:
     desc: Create Kind and deploy the complete development stack

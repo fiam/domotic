@@ -26,7 +26,7 @@ vars:
         })"
       fi
       printf '%s\n' "${requested_ref:-main}"
-  RESOLVED_BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
+  RESOLVED_BOOTSTRAP_VARS_FILE: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
   RESOLVED_BOOTSTRAP_STATE_FILE: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .RESOLVED_PRIVATE_ROOT)}}'
   RESOLVED_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
   RESOLVED_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
@@ -36,8 +36,6 @@ vars:
 env:
   DOMOTIC_SSH_USER: '{{.RESOLVED_SSH_USER}}'
   DOMOTIC_SSH_HOST: '{{.RESOLVED_SSH_HOST}}'
-  BOOTSTRAP_VARS_FILE: '{{.RESOLVED_BOOTSTRAP_VARS_FILE}}'
-  BOOTSTRAP_STATE_FILE: '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
 
 tasks:
   default:
@@ -164,7 +162,7 @@ tasks:
         "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
         bootstrap "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
         DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
         task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
       - |
@@ -179,7 +177,7 @@ tasks:
         "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
         rotate-cloudflare-token "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
         DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
         task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
       - |
@@ -204,7 +202,7 @@ tasks:
       - >-
         env
         DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
         DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
         task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" config:check
 

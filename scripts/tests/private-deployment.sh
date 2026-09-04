@@ -7,7 +7,7 @@ temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-private-deployment-test.XXXXXX")
 
 # The test builds isolated deployment roots and must not inherit paths exported
 # by the parent Taskfile.
-unset BOOTSTRAP_VARS_FILE BOOTSTRAP_STATE_FILE TF_VARS_FILE \
+unset DOMOTIC_BOOTSTRAP_VARS_FILE DOMOTIC_BOOTSTRAP_STATE_FILE TF_VARS_FILE \
   HELM_VALUES_FILE TERRAFORM_VALUES_FILE VALUES_FILE CONFIG_DIR
 
 cleanup() {
@@ -157,7 +157,7 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'set -euo pipefail' \
   'for argument in "$@"; do' \
-  '  if test "$argument" = init; then exit 0; fi' \
+  '  if test "$argument" = init || test "$argument" = apply; then exit 0; fi' \
   'done' \
   'if printf "%s\\n" "$@" | grep -Fqx output; then' \
   '  printf '\''{"cloudflare_api_token":"test-cloudflare-token","cloudflare_account_id":"00000000000000000000000000000000","endpoint":"https://00000000000000000000000000000000.r2.cloudflarestorage.com","state":{"bucket":"test-home-state","key":"domotic.tfstate","access_key_id":"state-id","secret_access_key":"state-secret"},"backups":{"bucket":"test-home-backups","access_key_id":"backup-id","secret_access_key":"backup-secret"}}'\''' \
@@ -165,6 +165,22 @@ printf '%s\n' \
   'fi' \
   'exit 1' > "$temp_root/bin/tofu"
 chmod 0700 "$temp_root/bin/tofu"
+
+# A child Task process must retain bootstrap paths supplied by the private
+# entrypoint. Taskfile-global variables are evaluated before included-task
+# variables, so these paths travel through dedicated environment names.
+bootstrap_delegation_root="$temp_root/bootstrap-delegation"
+install -d -m 0700 "$bootstrap_delegation_root/config"
+printf '%s\n' 'r2_bucket_prefix = "test-home"' \
+  > "$bootstrap_delegation_root/config/bootstrap.tfvars"
+PATH="$temp_root/bin:$PATH" \
+TF_VAR_state_passphrase=domotic-test-recovery-passphrase \
+TF_VAR_cloudflare_api_token=test-cloudflare-token \
+DOMOTIC_CONFIG_DIR="$bootstrap_delegation_root/config" \
+DOMOTIC_BOOTSTRAP_VARS_FILE="$bootstrap_delegation_root/config/bootstrap.tfvars" \
+DOMOTIC_BOOTSTRAP_STATE_FILE="$bootstrap_delegation_root/state/bootstrap.tfstate" \
+  task --silent --dir "$repository_root" bootstrap:init >/dev/null ||
+  fail "root Taskfile did not pass bootstrap paths to its included Taskfile"
 
 PATH="$temp_root/bin:$PATH" \
 DOMOTIC_RECOVERY_PASSPHRASE=domotic-test-recovery-passphrase \
@@ -416,7 +432,8 @@ git -C "$initialized_root" add \
 rm -rf -- "$initialized_root/.domotic"
 (
   cd "$initialized_root"
-  task --silent config:check >/dev/null
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+    task --silent config:check >/dev/null
 )
 
 git -C "$fixture_repository" \
