@@ -97,7 +97,7 @@ because OpenTofu can refresh and remove its Kubernetes resources normally:
 
 ```sh
 kubectl config use-context kind-ha
-task destroy-dev TF_VARS_FILE=infra/kind-ha.tfvars
+task destroy-dev DOMOTIC_TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
 The development prefix creates persistent `<prefix>-state` and
@@ -155,7 +155,7 @@ After deployment, verify the cluster and OpenTofu state:
 kubectl config use-context kind-ha
 kubectl get nodes
 kubectl --namespace kind-ha get pods,httproutes
-task deploy-dev TF_VARS_FILE=infra/kind-ha.tfvars
+task deploy-dev DOMOTIC_TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
 The plan must report no changes after the apply.

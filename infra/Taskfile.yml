@@ -3,17 +3,11 @@ version: '3'
 vars:
   INFRA_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
   INFRA_CONFIG_DIR: '{{if isAbs (toString .INFRA_REQUESTED_CONFIG_DIR)}}{{.INFRA_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .INFRA_REQUESTED_CONFIG_DIR)}}{{end}}'
-  INFRA_TF_VARS_FILE: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .INFRA_CONFIG_DIR)}}'
-  INFRA_HELM_VALUES_FILE: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .INFRA_CONFIG_DIR)}}'
-  INFRA_VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .INFRA_CONFIG_DIR)}}'
+  INFRA_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .INFRA_CONFIG_DIR)}}'
+  INFRA_HELM_VALUES_FILE: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .INFRA_CONFIG_DIR)}}'
+  INFRA_VALUES_FILE: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .INFRA_CONFIG_DIR)}}'
   INFRA_HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: '{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE | default ""}}'
   INFRA_CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
-
-env:
-  CONFIG_DIR: '{{.INFRA_CONFIG_DIR}}'
-  TF_VARS_FILE: '{{.INFRA_TF_VARS_FILE}}'
-  HELM_VALUES_FILE: '{{.INFRA_HELM_VALUES_FILE}}'
-  VALUES_FILE: '{{.INFRA_VALUES_FILE}}'
 
 tasks:
   default:

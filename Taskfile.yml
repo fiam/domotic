@@ -12,16 +12,16 @@ includes:
     dir: ./infra
     vars:
       DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-      TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
-      HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
-      VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
+      DOMOTIC_TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
+      DOMOTIC_GENERATED_HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
+      DOMOTIC_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   helm:
     taskfile: ./charts/domotic
     dir: ./charts/domotic
     vars:
       DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-      TERRAFORM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
-      VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
+      DOMOTIC_GENERATED_HELM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
+      DOMOTIC_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   dev:
     taskfile: ./dev
     dir: ./dev
@@ -31,18 +31,11 @@ vars:
   ROOT_CONFIG_DIR: '{{if isAbs (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{.ROOT_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{end}}'
   ROOT_BOOTSTRAP_VARS_PATH: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
   ROOT_BOOTSTRAP_STATE_PATH: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_DIR)}}'
-  ROOT_TOFU_VARS_PATH: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
-  ROOT_GENERATED_HELM_VALUES_PATH: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
-  ROOT_TOFU_HELM_VALUES_PATH: '{{.TERRAFORM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
-  ROOT_PRIVATE_HELM_VALUES_PATH: '{{.VALUES_FILE | default (printf "%s/values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_TOFU_VARS_PATH: '{{.DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_GENERATED_HELM_VALUES_PATH: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_TOFU_HELM_VALUES_PATH: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
+  ROOT_PRIVATE_HELM_VALUES_PATH: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .ROOT_CONFIG_DIR)}}'
   ROOT_DEV_CLUSTER_NAME: '{{.CLUSTER_NAME | default "ha"}}'
-
-env:
-  CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-  TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
-  HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
-  TERRAFORM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
-  VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
 
 tasks:
   default:
@@ -146,7 +139,7 @@ tasks:
   deploy-dev:
     desc: Create Kind and deploy the complete development stack
     vars:
-      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - task: dev:create
@@ -162,7 +155,7 @@ tasks:
           exit 1
         }
       - >-
-        TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
+        DOMOTIC_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         env
@@ -192,13 +185,13 @@ tasks:
         env \
           RELEASE_NAME="$release_name" \
           NAMESPACE="$namespace" \
-          VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml" \
+          DOMOTIC_PRIVATE_HELM_VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml" \
           task --dir "{{.ROOT_DIR}}" helm:deploy
 
   destroy-dev:
     desc: Remove the development deployment, infrastructure, and Kind cluster
     vars:
-      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - |
@@ -210,7 +203,7 @@ tasks:
           exit 1
         }
       - >-
-        TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
+        DOMOTIC_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         env

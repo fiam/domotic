@@ -6,8 +6,8 @@ vars:
   HELM_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
   HELM_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
   HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
-  HELM_TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .HELM_CONFIG_DIR)}}'
-  HELM_VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_TERRAFORM_VALUES_FILE: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_VALUES_FILE: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .HELM_CONFIG_DIR)}}'
   HELM_RESOLVED_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
 
 tasks:

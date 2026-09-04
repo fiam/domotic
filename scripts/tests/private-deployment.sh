@@ -7,8 +7,10 @@ temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-private-deployment-test.XXXXXX")
 
 # The test builds isolated deployment roots and must not inherit paths exported
 # by the parent Taskfile.
-unset DOMOTIC_BOOTSTRAP_VARS_FILE DOMOTIC_BOOTSTRAP_STATE_FILE TF_VARS_FILE \
-  HELM_VALUES_FILE TERRAFORM_VALUES_FILE VALUES_FILE CONFIG_DIR
+unset DOMOTIC_BOOTSTRAP_VARS_FILE DOMOTIC_BOOTSTRAP_STATE_FILE \
+  DOMOTIC_TF_VARS_FILE DOMOTIC_GENERATED_HELM_VALUES_FILE \
+  DOMOTIC_PRIVATE_HELM_VALUES_FILE TF_VARS_FILE HELM_VALUES_FILE \
+  TERRAFORM_VALUES_FILE VALUES_FILE CONFIG_DIR
 
 cleanup() {
   rm -rf -- "$temp_root"
@@ -250,6 +252,19 @@ run_config_check() {
 }
 
 run_config_check >/dev/null
+
+generated_values_path="$config_dir/infra/helm-values.yaml"
+private_values_path="$config_dir/values.yaml"
+helm_values_dry_run="$(
+  DOMOTIC_CONFIG_DIR="$config_dir" \
+    task --dry --dir "$repository_root" infra:helm-values 2>&1
+)"
+printf '%s\n' "$helm_values_dry_run" | grep -Fq "$generated_values_path" ||
+  fail "infra task did not resolve the generated Helm values path"
+if printf '%s\n' "$helm_values_dry_run" |
+  grep -F "mv -f" | grep -Fq "$private_values_path"; then
+  fail "infra task would overwrite the private Helm values"
+fi
 
 printf '%s\n' 'cloudflare_api_token = "must-not-be-tracked"' >> "$config_dir/bootstrap.tfvars"
 if run_config_check >/dev/null 2>&1; then
