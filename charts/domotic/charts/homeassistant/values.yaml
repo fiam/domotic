@@ -18,15 +18,16 @@ configSeed:
     pullPolicy: IfNotPresent
   resources: {}
 
-# Deliver user-selected Home Assistant custom integrations without writing
-# them into the configuration PVC. No integration is enabled by default. Local
-# sources must be packaged below this chart's files directory; a user-managed
-# Git submodule can provide a separately versioned source.
+# Deliver user-selected Home Assistant custom integrations to the writable
+# configuration PVC. No integration is enabled by default. Local sources must
+# be packaged below this chart's files directory; a user-managed Git submodule
+# can provide a separately versioned source.
 # Remote sources must be immutable tar.gz archives with a pinned SHA-256;
 # archivePath points at the directory containing that integration's
 # manifest.json. name is the Home Assistant integration domain and may contain
-# underscores. Each component is mounted independently so unmanaged
-# custom_components on the PVC are not hidden. See CUSTOM_INTEGRATIONS.md.
+# underscores. The installer tracks only the directories it manages, so
+# unrelated custom_components on the PVC are preserved. See
+# CUSTOM_INTEGRATIONS.md.
 customComponents:
   local: []
   remote: []

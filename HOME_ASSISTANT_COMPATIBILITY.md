@@ -7,7 +7,7 @@ treated as a compatibility migration and tested on a new disposable volume.
 
 ## Verified baseline
 
-Last verified: **2026-09-03**
+Last verified: **2026-09-04**
 
 | Contract | Verified value |
 | --- | --- |
@@ -27,7 +27,7 @@ Last verified: **2026-09-03**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
-| Custom integration delivery | no integration enabled by default; local and checksum-pinned remote render contracts verified |
+| Custom integration delivery | no integration enabled by default; checksum-pinned remote installation and writable-PVC restore verified |
 | Zigbee2MQTT snapshot staging | hourly CronJob; validated latest ZIP under `/config/.domotic/zigbee2mqtt` |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
@@ -61,7 +61,7 @@ change in any Home Assistant release, including a patch release.
 | `templates/onboarding-job.yaml` | The Home Assistant image contains compatible `python3` and `aiohttp` runtimes | The Helm hook cannot run. |
 | `templates/deployment.yaml` | The `.seed` adoption rules distinguish unchanged chart-managed YAML from user-modified files | An update could overwrite YAML edits or fail to restore a missing managed file. |
 | Restore mode | Starting with only `default_config:` exposes Home Assistant's native onboarding backup upload flow and a restored `/config` takes over | A release may require different bootstrap configuration or restore steps. |
-| Custom integration mounts | A user-selected integration remains compatible with the pinned Home Assistant image and can run from a read-only directory | Home Assistant can reject or fail to load the integration even though artifact verification and mounting succeeded. |
+| Custom integration files | A user-selected integration remains compatible with the pinned Home Assistant image and can run from its chart-managed directory on the writable configuration volume | Home Assistant can reject or fail to load the integration even though artifact verification and installation succeeded. |
 | `templates/zigbee2mqtt-backup-cronjob.yaml` | Home Assistant continues archiving non-excluded files beneath `/config`, including the staged Zigbee2MQTT ZIP | A native backup may omit the Zigbee2MQTT recovery snapshot even though the CronJob succeeds. |
 
 The chart does not write private `.storage` files. In seed mode, the
@@ -103,6 +103,8 @@ code, constants, schemas, migrations, and tests—not just release notes.
 - [Automatic schedule and retention model](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/config.py)
 - [Backup agent ID contract](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/agent.py)
 - [Cloudflare R2 backup agent](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/cloudflare_r2/backup.py)
+- [Native onboarding backup views](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/onboarding.py)
+- [Startup-time backup restoration](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/backup_restore.py)
 - [Native backup documentation](https://www.home-assistant.io/integrations/backup/)
 - [Core backup archive construction and exclusions](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/manager.py)
 - [Zigbee2MQTT backup request](https://www.zigbee2mqtt.io/guide/usage/mqtt_topics_and_messages.html#zigbee2mqttbridgerequestbackup)
@@ -147,7 +149,9 @@ required payloads and migration behavior more precisely than user-facing docs.
    Re-run the hook and confirm it preserves stored settings.
 10. Test restore mode separately with a disposable native backup. Confirm that
     neither integration config flows nor owner seeding runs and that restored
-    configuration survives another restart.
+    configuration survives another restart. Include a configured custom
+    integration: `/config` must not contain read-only submounts that prevent
+    Home Assistant from clearing it during restoration.
 11. Create and restore a test backup through the Cloudflare R2 integration.
 12. Confirm the Zigbee2MQTT snapshot CronJob shares Home Assistant's node,
     produces a valid archive without replacing the last good file on failure,
@@ -198,9 +202,12 @@ service data and CA bundle. The integration still reaches `loaded`; recheck
 these warnings on upgrade instead of hiding them or treating them as proof of
 failure.
 
-Native-backup upload through R2 is verified. Download/decryption and a complete
-native restore were not exercised in this baseline and remain required before
-approving a Home Assistant version change for production.
+An encrypted native backup was created through Home Assistant's R2 agent,
+downloaded from the private bucket, uploaded through the blank-instance
+onboarding flow, decrypted, and restored into a fresh Kind PVC. The restored
+owner login, recorder database, MQTT and R2 entries, automatic backup settings,
+core URLs, and a dedicated marker all survived. Normal seed-mode
+reconciliation then completed without creating another owner.
 
 Cloudflare Tunnel routing was not attached to the isolated compatibility
 cluster. It was subsequently exercised on the recreated development
@@ -217,11 +224,15 @@ The Zigbee2MQTT snapshot CronJob was exercised against the live Kind test
 broker. Required pod affinity placed it on Home Assistant's node, and the
 documented MQTT request produced a valid staged ZIP. A forced MQTT failure
 preserved the last valid archive and removed its temporary files. Inclusion in
-a native R2 backup and restoration into a new Zigbee2MQTT volume have not yet
-been exercised.
+a native R2 backup and recovery of the valid staged ZIP were verified. Import
+into a new Zigbee2MQTT volume has not yet been exercised.
 
-The chart renders with no custom integrations by default. The generic remote
-delivery contract was rendered with an underscored Home Assistant domain,
-checksum verification, archive traversal rejection, and distinct
-Kubernetes-safe resource names. Runtime compatibility remains an obligation
-of whichever integrations a deployment chooses.
+The chart renders with no custom integrations by default. A checksum-pinned
+remote integration was installed at runtime and survived the R2 backup and
+restore test. The first restore attempt also exposed why read-only submounts
+below `/config` are unsafe: Home Assistant must clear that directory during
+startup restoration. The installer now writes and reconciles only its managed
+directories on the PVC, leaving unrelated integrations alone. Managed removal
+and checksum-pinned reinstallation were both exercised after the restore.
+Runtime compatibility remains an obligation of whichever integrations a
+deployment chooses.

@@ -180,7 +180,8 @@ task restore:complete
 
 That task asks for an owner credential from the restored system, stores it in
 encrypted state, and resumes normal seed-mode reconciliation. It does not
-create another owner.
+create another owner. The normal deployment also reconciles checksum-pinned
+custom integrations after the restored configuration has taken over.
 
 ## Recover the deployment repository
 

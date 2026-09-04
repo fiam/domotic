@@ -39,9 +39,15 @@ rm "$archive"
 OpenTofu writes only the URL, digest, domain, and archive path to generated
 non-secret Helm values. An init container downloads the archive on every Home
 Assistant pod creation, verifies the SHA-256, rejects unsafe archive paths,
-checks for `manifest.json`, and copies only the declared integration directory
-into an ephemeral volume. Home Assistant receives that directory as a
-read-only mount under `/config/custom_components/<domain>`.
+checks for `manifest.json`, and atomically replaces only the declared
+integration directory under `/config/custom_components`. These directories
+stay writable so Home Assistant's native restore can replace `/config`.
+
+The chart records the integration domains it manages. Removing a domain from
+the deployment deletes its managed directory on the next rollout while leaving
+unmanaged custom integrations alone. A native restore replaces that record
+along with the rest of `/config`; deploy the chart again after restoration to
+reconcile the configured artifacts.
 
 URLs must use HTTPS and must not contain credentials, private access tokens, or
 expiring signed parameters. The current mechanism supports public archives. A

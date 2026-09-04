@@ -53,7 +53,6 @@ spec:
       {{- end }}
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
-      {{- if or .Values.configSeed.enabled .Values.customComponents.remote }}
       initContainers:
         {{- if .Values.configSeed.enabled }}
         - name: config-seed
@@ -117,6 +116,40 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         {{- end }}
+        {{- range $component := .Values.customComponents.local }}
+        {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
+        - name: custom-{{ $componentKey }}
+          image: "{{ $.Values.customComponents.installer.image.repository }}:{{ $.Values.customComponents.installer.image.tag }}"
+          imagePullPolicy: {{ $.Values.customComponents.installer.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+              target="/config/custom_components/$COMPONENT_NAME"
+              staging="/config/custom_components/.${COMPONENT_NAME}.tmp"
+              test -f /component-source/manifest.json
+              mkdir -p /config/custom_components
+              rm -rf "$staging"
+              mkdir -p "$staging"
+              cp -R /component-source/. "$staging/"
+              rm -rf "$target"
+              mv "$staging" "$target"
+          env:
+            - name: COMPONENT_NAME
+              value: {{ $component.name | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: custom-{{ $componentKey }}
+              mountPath: /component-source
+              readOnly: true
+          {{- with $.Values.customComponents.installer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
         {{- range $component := .Values.customComponents.remote }}
         {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
         {{- if not (regexMatch "^[a-z][a-z0-9_]*$" $component.name) }}
@@ -140,7 +173,9 @@ spec:
           args:
             - |
               set -eu
-              mkdir -p /work/unpacked /component
+              target="/config/custom_components/$COMPONENT_NAME"
+              staging="/config/custom_components/.${COMPONENT_NAME}.tmp"
+              mkdir -p /work/unpacked /config/custom_components
               wget -q -O /work/component.tar.gz "$COMPONENT_URL"
               echo "$COMPONENT_SHA256  /work/component.tar.gz" | sha256sum -c -
               if tar -tzf /work/component.tar.gz | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
@@ -150,8 +185,14 @@ spec:
               tar -xzf /work/component.tar.gz -C /work/unpacked
               source="/work/unpacked/$COMPONENT_ARCHIVE_PATH"
               test -f "$source/manifest.json"
-              cp -R "$source"/. /component/
+              rm -rf "$staging"
+              mkdir -p "$staging"
+              cp -R "$source"/. "$staging/"
+              rm -rf "$target"
+              mv "$staging" "$target"
           env:
+            - name: COMPONENT_NAME
+              value: {{ $component.name | quote }}
             - name: COMPONENT_URL
               value: {{ $component.url | quote }}
             - name: COMPONENT_SHA256
@@ -159,8 +200,8 @@ spec:
             - name: COMPONENT_ARCHIVE_PATH
               value: {{ $component.archivePath | quote }}
           volumeMounts:
-            - name: custom-{{ $componentKey }}
-              mountPath: /component
+            - name: config
+              mountPath: /config
             - name: custom-{{ $componentKey }}-work
               mountPath: /work
           {{- with $.Values.customComponents.installer.resources }}
@@ -168,7 +209,42 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         {{- end }}
-      {{- end }}
+        - name: custom-components-reconcile
+          image: "{{ .Values.customComponents.installer.image.repository }}:{{ .Values.customComponents.installer.image.tag }}"
+          imagePullPolicy: {{ .Values.customComponents.installer.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+              state_dir=/config/.domotic
+              state_file="$state_dir/managed-custom-components"
+              desired_file="$state_file.new"
+              mkdir -p "$state_dir" /config/custom_components
+              cat > "$desired_file" <<'EOF'
+              {{- range $component := concat .Values.customComponents.local .Values.customComponents.remote }}
+              {{ $component.name }}
+              {{- end }}
+              EOF
+              if [ -f "$state_file" ]; then
+                while IFS= read -r component_name; do
+                  case "$component_name" in
+                    ''|*[!a-z0-9_]*) continue ;;
+                  esac
+                  if ! grep -Fx "$component_name" "$desired_file" >/dev/null; then
+                    rm -rf "/config/custom_components/$component_name"
+                  fi
+                done < "$state_file"
+              fi
+              mv "$desired_file" "$state_file"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          {{- with .Values.customComponents.installer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -199,16 +275,6 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
-            {{- range $component := .Values.customComponents.local }}
-            - name: custom-{{ include "homeassistant.customComponentKey" $component.name }}
-              mountPath: /config/custom_components/{{ $component.name }}
-              readOnly: true
-            {{- end }}
-            {{- range $component := .Values.customComponents.remote }}
-            - name: custom-{{ include "homeassistant.customComponentKey" $component.name }}
-              mountPath: /config/custom_components/{{ $component.name }}
-              readOnly: true
-            {{- end }}
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -233,8 +299,6 @@ spec:
         {{- end }}
         {{- range $component := .Values.customComponents.remote }}
         {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
-        - name: custom-{{ $componentKey }}
-          emptyDir: {}
         - name: custom-{{ $componentKey }}-work
           emptyDir: {}
         {{- end }}

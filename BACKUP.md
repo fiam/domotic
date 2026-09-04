@@ -155,7 +155,10 @@ task restore:complete
 
 Supply an owner username and password from the restored system. The task
 retains that credential in encrypted state and resumes MQTT, R2, URL, and
-other chart-derived reconciliation.
+other chart-derived reconciliation. It also reinstalls each declared custom
+integration from its checksum-pinned artifact; their directories remain on the
+writable configuration volume so they cannot block Home Assistant from
+replacing `/config` during restoration.
 
 After recovery, confirm:
 

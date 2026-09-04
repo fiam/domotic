@@ -125,7 +125,13 @@ tasks:
           --set 'homeassistant.customComponents.remote[0].sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
           --set 'homeassistant.customComponents.remote[0].archivePath=fixture/custom_components/example_integration')"
         printf '%s\n' "$remote_render" | grep -q 'name: custom-example-integration'
-        printf '%s\n' "$remote_render" | grep -q 'mountPath: /config/custom_components/example_integration'
+        printf '%s\n' "$remote_render" | grep -Fq 'target="/config/custom_components/$COMPONENT_NAME"'
+        printf '%s\n' "$remote_render" | grep -q 'name: custom-components-reconcile'
+        printf '%s\n' "$remote_render" | grep -q 'managed-custom-components'
+        if printf '%s\n' "$remote_render" | grep -q 'mountPath: /config/custom_components/'; then
+          echo 'custom integrations must not create read-only mounts below /config' >&2
+          exit 1
+        fi
         printf '%s\n' "$remote_render" | grep -q 'sha256sum -c -'
         printf '%s\n' "$remote_render" | grep -q 'Custom component archive contains an unsafe path'
         if helm template "{{.RELEASE_NAME}}" . \
