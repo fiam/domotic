@@ -28,10 +28,9 @@ spec:
           - name: net.ipv4.ping_group_range
             value: "65532 65532"
       containers:
-        - name: {{ .Chart.Name }}
-          image: cloudflare/cloudflared:latest
-          name: cloudflared
-          imagePullPolicy: IfNotPresent
+        - name: cloudflared
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             # Defines an environment variable for the tunnel token.
             - name: TUNNEL_TOKEN

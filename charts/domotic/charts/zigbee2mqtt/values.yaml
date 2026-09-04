@@ -28,8 +28,8 @@ image:
   repository: koenkk/zigbee2mqtt
   # This sets the pull policy for images.
   pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion.
-  tag: "latest"
+  # Pin exact releases so node replacement cannot introduce an untested build.
+  tag: "2.14.1"
 
 # This is for the secrets for pulling an image from a private repository more information can be found here: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
 imagePullSecrets: []

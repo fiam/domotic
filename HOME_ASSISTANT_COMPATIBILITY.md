@@ -12,6 +12,8 @@ Last verified: **2026-09-03**
 | Contract | Verified value |
 | --- | --- |
 | Home Assistant Core image | `2026.9.0` |
+| cloudflared image | `2026.8.3` |
+| Zigbee2MQTT image | `2.14.1` |
 | Resulting HTTP storage | `.storage/http`, store `2.2` |
 | Resulting core configuration storage | `.storage/core.config`, store `1.4` |
 | Resulting config-entry storage | `.storage/core.config_entries`, store `1.5` |
@@ -205,6 +207,11 @@ cluster. It was subsequently exercised on the recreated development
 deployment: the public route returned the Home Assistant frontend, upgraded a
 WebSocket connection, and completed a fresh owner login. The local Gateway
 route and its WebSocket upgrade were also verified.
+
+cloudflared `2026.8.3` and Zigbee2MQTT `2.14.1` were pinned after exercising
+those exact images in Kind. Both Deployments became ready, the tunnel returned
+the frontend and upgraded a WebSocket connection, and a fresh Zigbee2MQTT
+snapshot Job completed through the broker after transient MQTT startup errors.
 
 The Zigbee2MQTT snapshot CronJob was exercised against the live Kind test
 broker. Required pod affinity placed it on Home Assistant's node, and the

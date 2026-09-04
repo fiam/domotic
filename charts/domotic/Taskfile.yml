@@ -85,8 +85,12 @@ tasks:
         fi
       - |
         ha_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/homeassistant/Chart.yaml)"
+        cloudflared_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/cloudflared/Chart.yaml)"
+        zigbee2mqtt_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/zigbee2mqtt/Chart.yaml)"
         parent_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' Chart.yaml)"
         test -n "$ha_version"
+        test -n "$cloudflared_version"
+        test -n "$zigbee2mqtt_version"
         test "$parent_version" = "$ha_version"
         for values_file in \
           ../../examples/values-minimal.yaml \
@@ -97,7 +101,16 @@ tasks:
             --namespace "{{.NAMESPACE}}" \
             --values "$values_file")"
           printf '%s\n' "$rendered" |
-            grep -Fq "image: \"homeassistant/home-assistant:${ha_version}\""
+            grep -F "image: \"homeassistant/home-assistant:${ha_version}\"" >/dev/null
+          printf '%s\n' "$rendered" |
+            grep -F "image: \"cloudflare/cloudflared:${cloudflared_version}\"" >/dev/null
+          printf '%s\n' "$rendered" |
+            grep -F "image: \"koenkk/zigbee2mqtt:${zigbee2mqtt_version}\"" >/dev/null
+          if printf '%s\n' "$rendered" |
+            grep -E 'image: [^[:space:]]+:latest(["[:space:]]|$)' >/dev/null; then
+            echo "$values_file renders a mutable latest image" >&2
+            exit 1
+          fi
           if printf '%s\n' "$rendered" | grep -q 'mountPath: /config/custom_components/'; then
             echo "$values_file must not select a custom integration" >&2
             exit 1
