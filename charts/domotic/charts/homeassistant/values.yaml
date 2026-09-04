@@ -290,6 +290,8 @@ config:
     port: 1883
   volume:
     size: 10Gi
+    # Empty uses the cluster's default StorageClass.
+    storageClass: ""
 
 logger:
   default: info

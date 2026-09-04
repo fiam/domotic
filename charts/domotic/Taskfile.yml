@@ -116,6 +116,13 @@ tasks:
             exit 1
           fi
         done
+        production_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-production.yaml)"
+        printf '%s\n' "$production_render" |
+          grep -Fq 'storageClassName: "local-path"'
+        printf '%s\n' "$production_render" |
+          grep -Fq 'storage: 20Gi'
       - |
         remote_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
           --namespace "{{.HELM_NAMESPACE}}" \

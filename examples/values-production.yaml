@@ -49,11 +49,9 @@ homeassistant:
     # Reconciled through the Home Assistant API on each seed-mode deployment.
     # Configure regional settings in the Home Assistant UI.
     name: "My Smart Home"
-
-  persistence:
-    enabled: true
-    size: 20Gi
-    storageClass: "local-path"
+    volume:
+      size: 20Gi
+      storageClass: "local-path"
   
   resources:
     limits:

@@ -25,10 +25,9 @@ homeassistant:
     tag: "2026.9.0"
   config:
     name: "Home"
-  persistence:
-    enabled: true
-    size: 20Gi
-    storageClass: local-path
+    volume:
+      size: 20Gi
+      storageClass: local-path
   httpRoute:
     enabled: true
     parentRefs:
