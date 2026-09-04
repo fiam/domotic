@@ -361,6 +361,7 @@ tasks:
 
   credentials:show:
     desc: Reveal Home Assistant recovery credentials
+    prompt: This prints recovery credentials to the terminal. Continue?
     deps: [config:check]
     cmds:
       - >-
@@ -368,7 +369,7 @@ tasks:
         runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
         DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show
+        task --yes --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show
 
   credentials:update:
     desc: Record a changed Home Assistant owner credential in encrypted state

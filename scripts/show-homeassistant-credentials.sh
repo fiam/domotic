@@ -6,8 +6,12 @@ set -euo pipefail
   exit 2
 }
 
-credentials="$(tofu -chdir="$1" output -json homeassistant_credentials)"
-backup_password="$(tofu -chdir="$1" output -json homeassistant_backup_password)"
+outputs="$(tofu -chdir="$1" output -json)"
+credentials="$(jq -cer '.homeassistant_credentials.value' <<<"$outputs")"
+backup_password="$(
+  jq -cr '.homeassistant_backup_password.value // null' <<<"$outputs"
+)"
+unset outputs
 
 printf 'Home Assistant username: %s\n' "$(jq -er '.username' <<<"$credentials")"
 printf 'Home Assistant password: %s\n' "$(jq -er '.password' <<<"$credentials")"
@@ -16,3 +20,5 @@ if [[ "$backup_password" != "null" ]]; then
 else
   printf '%s\n' 'Native backup encryption: disabled'
 fi
+
+unset credentials backup_password

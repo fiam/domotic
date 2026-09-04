@@ -151,6 +151,44 @@ for runtime_task in _deploy-dev _destroy-dev; do
   fi
 done
 
+credentials_task="$(awk '
+  /^  credentials:show:/ { in_task = 1 }
+  in_task && /^  [[:alnum:]_-]+:/ && !/^  credentials:show:/ { exit }
+  in_task { print }
+' "$repository_root/Taskfile.remote.yml")"
+printf '%s\n' "$credentials_task" |
+  grep -Fq 'prompt: This prints recovery credentials to the terminal. Continue?' ||
+  fail "remote credential task does not own the confirmation prompt"
+printf '%s\n' "$credentials_task" |
+  grep -Fq 'task --yes --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show' ||
+  fail "remote credential task does not approve its nested prompt"
+
+# A null root output is absent from OpenTofu state. Credential display must
+# still work when native backup encryption is disabled.
+credential_bin="$temp_root/credential-bin"
+install -d -m 0700 "$credential_bin"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'set -euo pipefail' \
+  'printf '\''{"homeassistant_credentials":{"value":{"username":"admin","password":"test-password"}}}'\''' \
+  > "$credential_bin/tofu"
+chmod 0700 "$credential_bin/tofu"
+credential_output="$(
+  PATH="$credential_bin:$PATH" \
+    "$repository_root/scripts/show-homeassistant-credentials.sh" \
+    "$temp_root/credential-state"
+)"
+printf '%s\n' "$credential_output" |
+  grep -Fq 'Home Assistant username: admin' ||
+  fail "credential display omitted the owner username"
+printf '%s\n' "$credential_output" |
+  grep -Fq 'Home Assistant password: test-password' ||
+  fail "credential display omitted the owner password"
+printf '%s\n' "$credential_output" |
+  grep -Fq 'Native backup encryption: disabled' ||
+  fail "credential display requires an absent backup-password output"
+unset credential_output
+
 # Validate the runtime wrapper without printing any of its test credentials.
 install -d -m 0700 "$temp_root/bin" "$temp_root/runtime/config" "$temp_root/runtime/state"
 printf '%s\n' 'r2_bucket_prefix = "test-home"' > "$temp_root/runtime/config/bootstrap.tfvars"
