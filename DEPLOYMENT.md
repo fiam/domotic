@@ -52,6 +52,39 @@ ping domotic-server.local
 
 Linux clients may also need `libnss-mdns`; macOS and iOS include mDNS support.
 
+### Optional: use the server's Bluetooth adapter
+
+Home Assistant Container uses the host's BlueZ service through the system
+D-Bus socket. Install BlueZ on the server and confirm that it sees a controller:
+
+```sh
+sudo apt-get install --yes bluez
+sudo systemctl enable --now bluetooth.service
+systemctl is-active bluetooth.service
+bluetoothctl list
+```
+
+Then expose the host D-Bus directory read-only in the private deployment's
+`config/values.yaml`:
+
+```yaml
+homeassistant:
+  volumes:
+    - name: host-dbus
+      hostPath:
+        path: /run/dbus
+        type: Directory
+  volumeMounts:
+    - name: host-dbus
+      mountPath: /run/dbus
+      readOnly: true
+```
+
+Deploy the change with `task deploy`. The Home Assistant chart already grants
+the `NET_ADMIN` and `NET_RAW` capabilities required for reliable Bluetooth
+management. If the server keeps its system bus below `/var/run/dbus`, use that
+as the `hostPath.path` while retaining `/run/dbus` as the container mount path.
+
 ## 2. Configure and install k3s
 
 Configure the API server names before the first installation. This avoids an
@@ -433,6 +466,7 @@ Refresh any remote copies of `/etc/rancher/k3s/k3s.yaml` afterward.
 - [k3s cluster access](https://docs.k3s.io/cluster-access)
 - [k3s certificate rotation](https://docs.k3s.io/cli/certificate)
 - [Traefik Gateway API provider](https://doc.traefik.io/traefik/providers/kubernetes-gateway/)
+- [Home Assistant Bluetooth requirements](https://www.home-assistant.io/integrations/bluetooth/#requirements-for-linux-systems)
 - [Avahi address publication](https://manpages.debian.org/trixie/avahi-utils/avahi-publish-address.1.en.html)
 - [Avahi daemon configuration](https://manpages.debian.org/trixie/avahi-daemon/avahi-daemon.conf.5.en.html)
 - [Cloudflare R2 bucket OpenTofu resource](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/r2_bucket)
