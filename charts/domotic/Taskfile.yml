@@ -1,14 +1,14 @@
 version: '3'
 
 vars:
-  CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/../.." .ROOT_DIR)}}'
-  RESOLVED_CONFIG_DIR: '{{if isAbs (toString .CONFIG_DIR)}}{{.CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .CONFIG_DIR)}}{{end}}'
-  RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
-  NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
+  HELM_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/../.." .ROOT_DIR)}}'
+  HELM_CONFIG_DIR: '{{if isAbs (toString .HELM_REQUESTED_CONFIG_DIR)}}{{.HELM_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .HELM_REQUESTED_CONFIG_DIR)}}{{end}}'
+  HELM_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
+  HELM_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
   HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
-  TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
-  VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
-  HELM_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
+  HELM_TERRAFORM_VALUES_FILE: '{{.TERRAFORM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_VALUES_FILE: '{{.VALUES_FILE | default (printf "%s/values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_RESOLVED_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
 
 tasks:
   default:
@@ -21,28 +21,28 @@ tasks:
     preconditions:
       - sh: command -v helm >/dev/null
         msg: Install Helm before running chart tasks.
-      - sh: test -f "{{.TERRAFORM_VALUES_FILE}}"
+      - sh: test -f "{{.HELM_TERRAFORM_VALUES_FILE}}"
         msg: Run `task infra:apply` to generate infra/helm-values.yaml first.
-      - sh: test -f "{{.VALUES_FILE}}"
+      - sh: test -f "{{.HELM_VALUES_FILE}}"
         msg: Copy an example to values.yaml and customize it first.
     cmds:
       - >-
-        helm upgrade --install "{{.RELEASE_NAME}}" .
-        --namespace "{{.NAMESPACE}}"
+        helm upgrade --install "{{.HELM_RELEASE_NAME}}" .
+        --namespace "{{.HELM_NAMESPACE}}"
         --create-namespace
         {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
-        --values "{{.TERRAFORM_VALUES_FILE}}"
-        --values "{{.VALUES_FILE}}"
+        --values "{{.HELM_TERRAFORM_VALUES_FILE}}"
+        --values "{{.HELM_VALUES_FILE}}"
         --rollback-on-failure
         --wait
-        --timeout "{{.HELM_TIMEOUT}}"
+        --timeout "{{.HELM_RESOLVED_TIMEOUT}}"
 
   uninstall:
     desc: Uninstall the Domotic release
     cmds:
       - >-
-        helm uninstall "{{.RELEASE_NAME}}"
-        --namespace "{{.NAMESPACE}}"
+        helm uninstall "{{.HELM_RELEASE_NAME}}"
+        --namespace "{{.HELM_NAMESPACE}}"
         {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
         --ignore-not-found
 
@@ -50,17 +50,17 @@ tasks:
     desc: Show the Helm release and workload status
     cmds:
       - >-
-        helm status "{{.RELEASE_NAME}}" --namespace "{{.NAMESPACE}}"
+        helm status "{{.HELM_RELEASE_NAME}}" --namespace "{{.HELM_NAMESPACE}}"
         {{if .HELM_KUBE_CONTEXT}}--kube-context "{{.HELM_KUBE_CONTEXT}}"{{end}}
       - >-
         kubectl
         {{if .HELM_KUBE_CONTEXT}}--context "{{.HELM_KUBE_CONTEXT}}"{{end}}
-        --namespace "{{.NAMESPACE}}" get pods,cronjobs,jobs,httproutes
+        --namespace "{{.HELM_NAMESPACE}}" get pods,cronjobs,jobs,httproutes
 
   template:
     desc: Render the chart locally with minimal example values
     cmds:
-      - helm template "{{.RELEASE_NAME}}" . --namespace "{{.NAMESPACE}}" --values ../../examples/values-minimal.yaml
+      - helm template "{{.HELM_RELEASE_NAME}}" . --namespace "{{.HELM_NAMESPACE}}" --values ../../examples/values-minimal.yaml
 
   lint:
     desc: Lint the Helm chart
@@ -72,12 +72,12 @@ tasks:
     cmds:
       - task: lint
       - |
-        helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --kube-version 1.23.0 \
           --values ../../examples/values-minimal.yaml >/dev/null
-        if helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --kube-version 1.22.17 \
           --values ../../examples/values-minimal.yaml >/dev/null 2>&1; then
           echo 'Kubernetes releases older than 1.23 must fail chart validation' >&2
@@ -97,8 +97,8 @@ tasks:
           ../../examples/values-kind.yaml \
           ../../examples/values-production.yaml
         do
-          rendered="$(helm template "{{.RELEASE_NAME}}" . \
-            --namespace "{{.NAMESPACE}}" \
+          rendered="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+            --namespace "{{.HELM_NAMESPACE}}" \
             --values "$values_file")"
           printf '%s\n' "$rendered" |
             grep -F "image: \"homeassistant/home-assistant:${ha_version}\"" >/dev/null
@@ -117,8 +117,8 @@ tasks:
           fi
         done
       - |
-        remote_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        remote_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set 'homeassistant.customComponents.remote[0].name=example_integration' \
           --set 'homeassistant.customComponents.remote[0].url=https://example.invalid/fixture.tar.gz' \
@@ -134,8 +134,8 @@ tasks:
         fi
         printf '%s\n' "$remote_render" | grep -q 'sha256sum -c -'
         printf '%s\n' "$remote_render" | grep -q 'Custom component archive contains an unsafe path'
-        if helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set 'homeassistant.customComponents.remote[0].name=fixture' \
           --set 'homeassistant.customComponents.remote[0].url=http://example.invalid/fixture.tar.gz' \
@@ -146,8 +146,8 @@ tasks:
           exit 1
         fi
       - |
-        backup_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        backup_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.zigbee2mqttBackup.enabled=true \
           --set homeassistant.zigbee2mqttBackup.mqtt.server=domotic-mosquitto)"
@@ -160,8 +160,8 @@ tasks:
         printf '%s\n' "$backup_render" | grep -Fq 'mosquitto_rr "$@"'
         printf '%s\n' "$backup_render" | grep -Fq 'unzip -t "$archive_file"'
         printf '%s\n' "$backup_render" | grep -Fq 'value: "domotic-mosquitto"'
-        if helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.zigbee2mqttBackup.enabled=true \
           --set homeassistant.zigbee2mqttBackup.mqtt.server=domotic-mosquitto \
@@ -171,8 +171,8 @@ tasks:
           exit 1
         fi
       - |
-        seed_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        seed_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.onboarding.enabled=true \
           --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
@@ -203,8 +203,8 @@ tasks:
           echo 'configuration.yaml must live on the PVC, not a permanent subPath mount' >&2
           exit 1
         fi
-        configuration_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        configuration_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --show-only charts/homeassistant/templates/configmap.yaml)"
         if printf '%s\n' "$configuration_render" | grep -q '^    homeassistant:'; then
@@ -218,8 +218,8 @@ tasks:
           script { sub(/^              /, ""); print }
         ')"
         printf '%s\n' "$onboarding_script" | python3 -c 'import ast, sys; ast.parse(sys.stdin.read())'
-        unencrypted_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        unencrypted_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.onboarding.enabled=true \
           --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
@@ -236,8 +236,8 @@ tasks:
         printf '%s\n' "$unencrypted_render" | grep -q '"protected": automatic_backup_password is not None'
         printf '%s\n' "$unencrypted_render" | grep -q '"password": automatic_backup_password'
       - |
-        restore_render="$(helm template "{{.RELEASE_NAME}}" . \
-          --namespace "{{.NAMESPACE}}" \
+        restore_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.configSeed.mode=restore \
           --set homeassistant.onboarding.enabled=true \

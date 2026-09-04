@@ -5,8 +5,9 @@ independent private repository. Do not use a GitHub fork: a fork of a public
 repository remains public.
 
 The private repository contains only your configuration and a pinned Domotic
-revision. Task downloads that revision into the ignored `.domotic` directory
-when a command runs.
+revision. Its Taskfile fetches the entrypoint through an immutable commit URL,
+then downloads that same revision into the ignored `.domotic` directory when a
+command runs.
 
 ## Create the repository
 

@@ -4,35 +4,47 @@ includes:
   bootstrap:
     taskfile: ./bootstrap
     dir: ./bootstrap
+    vars:
+      BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
+      BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
   infra:
     taskfile: ./infra
     dir: ./infra
+    vars:
+      DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
+      TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
+      HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
+      VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   helm:
     taskfile: ./charts/domotic
     dir: ./charts/domotic
+    vars:
+      DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
+      TERRAFORM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
+      VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   dev:
     taskfile: ./dev
     dir: ./dev
 
 vars:
-  REQUESTED_CONFIG_DIR: '{{.CONFIG_DIR | default .ROOT_DIR}}'
-  RESOLVED_CONFIG_DIR: '{{if isAbs (toString .REQUESTED_CONFIG_DIR)}}{{.REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .REQUESTED_CONFIG_DIR)}}{{end}}'
-  BOOTSTRAP_VARS_PATH: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
-  BOOTSTRAP_STATE_PATH: '{{.BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .RESOLVED_CONFIG_DIR)}}'
-  TOFU_VARS_PATH: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .RESOLVED_CONFIG_DIR)}}'
-  GENERATED_HELM_VALUES_PATH: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .RESOLVED_CONFIG_DIR)}}'
-  TOFU_HELM_VALUES_PATH: '{{.TERRAFORM_VALUES_FILE | default .GENERATED_HELM_VALUES_PATH}}'
-  PRIVATE_HELM_VALUES_PATH: '{{.VALUES_FILE | default (printf "%s/values.yaml" .RESOLVED_CONFIG_DIR)}}'
-  DEV_CLUSTER_NAME: '{{.CLUSTER_NAME | default "ha"}}'
+  ROOT_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default .ROOT_DIR}}'
+  ROOT_CONFIG_DIR: '{{if isAbs (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{.ROOT_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{end}}'
+  ROOT_BOOTSTRAP_VARS_PATH: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_BOOTSTRAP_STATE_PATH: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_CONFIG_DIR)}}'
+  ROOT_TOFU_VARS_PATH: '{{.TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_GENERATED_HELM_VALUES_PATH: '{{.HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_TOFU_HELM_VALUES_PATH: '{{.TERRAFORM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
+  ROOT_PRIVATE_HELM_VALUES_PATH: '{{.VALUES_FILE | default (printf "%s/values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_DEV_CLUSTER_NAME: '{{.CLUSTER_NAME | default "ha"}}'
 
 env:
-  CONFIG_DIR: '{{.RESOLVED_CONFIG_DIR}}'
-  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_PATH}}'
-  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_PATH}}'
-  TF_VARS_FILE: '{{.TOFU_VARS_PATH}}'
-  HELM_VALUES_FILE: '{{.GENERATED_HELM_VALUES_PATH}}'
-  TERRAFORM_VALUES_FILE: '{{.TOFU_HELM_VALUES_PATH}}'
-  VALUES_FILE: '{{.PRIVATE_HELM_VALUES_PATH}}'
+  CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
+  BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
+  BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
+  TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
+  HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
+  TERRAFORM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
+  VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
 
 tasks:
   default:
@@ -59,10 +71,10 @@ tasks:
     desc: Validate a private deployment configuration and its Git boundaries
     cmds:
       - >-
-        ./scripts/config-check.sh "{{.RESOLVED_CONFIG_DIR}}"
-        "{{.BOOTSTRAP_VARS_PATH}}" "{{.BOOTSTRAP_STATE_PATH}}"
-        "{{.TOFU_VARS_PATH}}" "{{.PRIVATE_HELM_VALUES_PATH}}"
-        "{{.GENERATED_HELM_VALUES_PATH}}"
+        ./scripts/config-check.sh "{{.ROOT_CONFIG_DIR}}"
+        "{{.ROOT_BOOTSTRAP_VARS_PATH}}" "{{.ROOT_BOOTSTRAP_STATE_PATH}}"
+        "{{.ROOT_TOFU_VARS_PATH}}" "{{.ROOT_PRIVATE_HELM_VALUES_PATH}}"
+        "{{.ROOT_GENERATED_HELM_VALUES_PATH}}"
 
   deploy:
     desc: Apply infrastructure and deploy the chart
@@ -98,7 +110,7 @@ tasks:
       - task: infra:init
       - >-
         ./scripts/update-homeassistant-credentials.sh
-        "{{.ROOT_DIR}}/infra" "{{.TOFU_VARS_PATH}}"
+        "{{.ROOT_DIR}}/infra" "{{.ROOT_TOFU_VARS_PATH}}"
 
   zigbee:import:
     desc: Import an existing Zigbee identity into encrypted state
@@ -108,7 +120,7 @@ tasks:
       - task: infra:init
       - >-
         ./scripts/zigbee-keys.sh import "{{.SOURCE}}"
-        "{{.ROOT_DIR}}/infra" "{{.TOFU_VARS_PATH}}"
+        "{{.ROOT_DIR}}/infra" "{{.ROOT_TOFU_VARS_PATH}}"
 
   restore:complete:
     desc: Record the restored owner credential and resume normal reconciliation
@@ -127,22 +139,22 @@ tasks:
     cmds:
       - >-
         ./scripts/with-opentofu-environment.sh
-        bootstrap "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        bootstrap "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         task --dir "{{.ROOT_DIR}}" bootstrap:apply
-        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_PATH}}"
-        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_PATH}}"
+        BOOTSTRAP_VARS_FILE="{{.ROOT_BOOTSTRAP_VARS_PATH}}"
+        BOOTSTRAP_STATE_FILE="{{.ROOT_BOOTSTRAP_STATE_PATH}}"
 
   deploy-dev:
     desc: Create Kind and deploy the complete development stack
     vars:
-      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - task: dev:create
         vars:
-          CLUSTER_NAME: '{{.DEV_CLUSTER_NAME}}'
+          CLUSTER_NAME: '{{.ROOT_DEV_CLUSTER_NAME}}'
       - |
-        expected_context='kind-{{.DEV_CLUSTER_NAME}}'
+        expected_context='kind-{{.ROOT_DEV_CLUSTER_NAME}}'
         current_context="$(kubectl config current-context)"
         test "$current_context" = "$expected_context" || {
           printf 'Development deployment requires context %s; current context is %s.\n' \
@@ -153,9 +165,10 @@ tasks:
       - >-
         TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
-        runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
         task --dir "{{.ROOT_DIR}}" _deploy-dev
-        CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
 
   _deploy-dev:
     # The credential wrapper invokes this in a child Task process, so Task
@@ -177,19 +190,20 @@ tasks:
             exit 1
             ;;
         esac
-        task --dir "{{.ROOT_DIR}}" helm:deploy \
+        env \
           RELEASE_NAME="$release_name" \
           NAMESPACE="$namespace" \
-          VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml"
+          VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml" \
+          task --dir "{{.ROOT_DIR}}" helm:deploy
 
   destroy-dev:
     desc: Remove the development deployment, infrastructure, and Kind cluster
     vars:
-      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - |
-        expected_context='kind-{{.DEV_CLUSTER_NAME}}'
+        expected_context='kind-{{.ROOT_DEV_CLUSTER_NAME}}'
         current_context="$(kubectl config current-context)"
         test "$current_context" = "$expected_context" || {
           printf 'Refusing to destroy through context %s; expected %s.\n' \
@@ -199,12 +213,13 @@ tasks:
       - >-
         TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
-        runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
         task --dir "{{.ROOT_DIR}}" _destroy-dev
-        CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
       - task: dev:destroy
         vars:
-          CLUSTER_NAME: '{{.DEV_CLUSTER_NAME}}'
+          CLUSTER_NAME: '{{.ROOT_DEV_CLUSTER_NAME}}'
 
   _destroy-dev:
     # Keep this callable for the same reason as _deploy-dev.

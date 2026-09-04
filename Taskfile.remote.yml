@@ -5,36 +5,39 @@ version: '3'
 # delegates to repository scripts and Taskfiles.
 
 vars:
-  PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
-  CONFIG_DIR: '{{.CONFIG_DIR | default (printf "%s/config" .PRIVATE_ROOT)}}'
-  DOMOTIC_SOURCE_DIR: '{{.DOMOTIC_SOURCE_DIR | default (printf "%s/.domotic/source" .PRIVATE_ROOT)}}'
-  DOMOTIC_REPOSITORY: '{{.DOMOTIC_REPOSITORY | default "https://github.com/fiam/domotic.git"}}'
+  RESOLVED_PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
+  RESOLVED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/config" .RESOLVED_PRIVATE_ROOT)}}'
+  RESOLVED_DOMOTIC_SOURCE_DIR: '{{.DOMOTIC_SOURCE_DIR | default (printf "%s/.domotic/source" .RESOLVED_PRIVATE_ROOT)}}'
+  RESOLVED_DOMOTIC_REPOSITORY: '{{.DOMOTIC_REPOSITORY | default "https://github.com/fiam/domotic.git"}}'
   DOMOTIC_REQUESTED_REF:
     sh: |
-      requested_ref="$({
-        printf '%s\n' '{{.TASKFILE}}' |
-          awk -F '[?&]' '{
-            for (field = 1; field <= NF; field++) {
-              if ($field ~ /^ref=/) {
-                print substr($field, 5)
-                exit
+      requested_ref='{{.DOMOTIC_PINNED_REF | default ""}}'
+      if test -z "$requested_ref"; then
+        requested_ref="$({
+          printf '%s\n' '{{.TASKFILE}}' |
+            awk -F '[?&]' '{
+              for (field = 1; field <= NF; field++) {
+                if ($field ~ /^ref=/) {
+                  print substr($field, 5)
+                  exit
+                }
               }
-            }
-          }'
-      })"
+            }'
+        })"
+      fi
       printf '%s\n' "${requested_ref:-main}"
-  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .CONFIG_DIR)}}'
-  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .PRIVATE_ROOT)}}'
-  RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
-  NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
-  SSH_USER: '{{.SSH_USER | default ""}}'
-  SSH_HOST: '{{.SSH_HOST | default ""}}'
+  RESOLVED_BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
+  RESOLVED_BOOTSTRAP_STATE_FILE: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .RESOLVED_PRIVATE_ROOT)}}'
+  RESOLVED_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
+  RESOLVED_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
+  RESOLVED_SSH_USER: '{{.SSH_USER | default ""}}'
+  RESOLVED_SSH_HOST: '{{.SSH_HOST | default ""}}'
 
 env:
-  DOMOTIC_SSH_USER: '{{.SSH_USER}}'
-  DOMOTIC_SSH_HOST: '{{.SSH_HOST}}'
-  BOOTSTRAP_VARS_FILE: '{{.BOOTSTRAP_VARS_FILE}}'
-  BOOTSTRAP_STATE_FILE: '{{.BOOTSTRAP_STATE_FILE}}'
+  DOMOTIC_SSH_USER: '{{.RESOLVED_SSH_USER}}'
+  DOMOTIC_SSH_HOST: '{{.RESOLVED_SSH_HOST}}'
+  BOOTSTRAP_VARS_FILE: '{{.RESOLVED_BOOTSTRAP_VARS_FILE}}'
+  BOOTSTRAP_STATE_FILE: '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
 
 tasks:
   default:
@@ -48,8 +51,8 @@ tasks:
     cmds:
       - |
         requested_ref='{{.DOMOTIC_REQUESTED_REF}}'
-        repository='{{.DOMOTIC_REPOSITORY}}'
-        source_dir='{{.DOMOTIC_SOURCE_DIR}}'
+        repository='{{.RESOLVED_DOMOTIC_REPOSITORY}}'
+        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
 
         test -n "$requested_ref" || {
           echo 'The Taskfile URL has an empty ref parameter.' >&2
@@ -130,8 +133,8 @@ tasks:
     deps: [source:sync]
     cmds:
       - |
-        private_root='{{.PRIVATE_ROOT}}'
-        source_dir='{{.DOMOTIC_SOURCE_DIR}}'
+        private_root='{{.RESOLVED_PRIVATE_ROOT}}'
+        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
         ref="$(git -C "$source_dir" rev-parse HEAD)"
 
         test ! -e "$private_root/Taskfile.yml" || {
@@ -158,13 +161,14 @@ tasks:
     deps: [source:sync]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        bootstrap "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" bootstrap:apply
-        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
-        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        bootstrap "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
       - |
-        printf 'Bootstrap state updated: %s\n' '{{.BOOTSTRAP_STATE_FILE}}'
+        printf 'Bootstrap state updated: %s\n' '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
         printf 'Review and commit that encrypted file before deploying.\n'
 
   cloudflare-token:update:
@@ -172,35 +176,37 @@ tasks:
     deps: [source:sync]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        rotate-cloudflare-token "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" bootstrap:apply
-        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
-        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        rotate-cloudflare-token "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
       - |
         printf 'Cloudflare token replaced in encrypted bootstrap state.\n'
-        printf 'Review and commit %s.\n' '{{.BOOTSTRAP_STATE_FILE}}'
+        printf 'Review and commit %s.\n' '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
 
   recovery-passphrase:update:
     desc: Re-encrypt bootstrap and main state with a new recovery passphrase
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/rotate-recovery-passphrase.sh"
-        "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}"
-        "{{.BOOTSTRAP_STATE_FILE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/rotate-recovery-passphrase.sh"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}"
+        "{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
 
   config:check:
     desc: Validate private configuration and Git secret boundaries
     deps: [source:sync]
     cmds:
       - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" config:check
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        BOOTSTRAP_VARS_FILE="{{.BOOTSTRAP_VARS_FILE}}"
-        BOOTSTRAP_STATE_FILE="{{.BOOTSTRAP_STATE_FILE}}"
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" config:check
 
   domotic:update:
     desc: Update the pinned Domotic revision without deploying it
@@ -208,8 +214,8 @@ tasks:
     cmds:
       - |
         target_ref='{{.REF | default "main"}}'
-        source_dir='{{.DOMOTIC_SOURCE_DIR}}'
-        private_taskfile='{{.PRIVATE_ROOT}}/Taskfile.yml'
+        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
+        private_taskfile='{{.RESOLVED_PRIVATE_ROOT}}/Taskfile.yml'
 
         test -n "$target_ref" || {
           echo 'REF cannot be empty.' >&2
@@ -259,7 +265,7 @@ tasks:
       vars: [SSH_USER, SSH_HOST]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/k3s-import-context.sh"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/k3s-import-context.sh"
         --user "$DOMOTIC_SSH_USER"
         "$DOMOTIC_SSH_HOST"
 
@@ -267,7 +273,7 @@ tasks:
     desc: Validate the pinned source and private configuration
     deps: [source:sync]
     cmds:
-      - task --dir "{{.DOMOTIC_SOURCE_DIR}}" check
+      - task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" check
       - task: config:check
 
   plan:
@@ -275,32 +281,35 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" infra:plan
-        CONFIG_DIR="{{.CONFIG_DIR}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" infra:plan
 
   deploy:
     desc: Apply OpenTofu and deploy the pinned Helm chart
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" deploy
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" deploy
 
   homeassistant:deploy:
     desc: Deploy the Helm release without applying OpenTofu
     deps: [config:check]
     cmds:
       - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" helm:deploy
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" helm:deploy
 
   homeassistant:update:
     desc: Update Home Assistant to the version verified by the Domotic pin
@@ -308,10 +317,10 @@ tasks:
     cmds:
       - |
         version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' \
-          "{{.DOMOTIC_SOURCE_DIR}}/charts/domotic/charts/homeassistant/Chart.yaml")"
+          "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/charts/domotic/charts/homeassistant/Chart.yaml")"
         test -n "$version"
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/set-homeassistant-version.sh" \
-          "{{.CONFIG_DIR}}/values.yaml" "$version"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/set-homeassistant-version.sh" \
+          "{{.RESOLVED_CONFIG_DIR}}/values.yaml" "$version"
         printf 'Home Assistant is pinned to %s in config/values.yaml.\n' "$version"
       - task: homeassistant:deploy
 
@@ -320,54 +329,59 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore
 
   restore:plan:
     desc: Plan the native-backup restore preparation
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:plan
-        CONFIG_DIR="{{.CONFIG_DIR}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore:plan
 
   restore:complete:
     desc: Record the restored owner credential and resume reconciliation
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" restore:complete
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore:complete
 
   credentials:show:
     desc: Reveal Home Assistant recovery credentials
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" credentials:show
-        CONFIG_DIR="{{.CONFIG_DIR}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show
 
   credentials:update:
     desc: Record a changed Home Assistant owner credential in encrypted state
     deps: [config:check]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" credentials:update
-        CONFIG_DIR="{{.CONFIG_DIR}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:update
 
   zigbee:import:
     desc: Import an existing Zigbee identity into encrypted state
@@ -376,20 +390,22 @@ tasks:
       vars: [SOURCE]
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" zigbee:import
-        CONFIG_DIR="{{.CONFIG_DIR}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         SOURCE="{{.SOURCE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" zigbee:import
 
   status:
     desc: Show the deployed release and workload status
     deps: [source:sync]
     cmds:
       - >-
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" helm:status
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        env
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" helm:status
 
   destroy:
     desc: Remove workloads and ordinary infrastructure, preserving R2 buckets
@@ -397,16 +413,17 @@ tasks:
     prompt: This removes the deployment but preserves R2 state and backups. Continue?
     cmds:
       - >-
-        "{{.DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.DOMOTIC_SOURCE_DIR}}" "{{.PRIVATE_ROOT}}" "{{.CONFIG_DIR}}" --
-        task --dir "{{.DOMOTIC_SOURCE_DIR}}" destroy
-        CONFIG_DIR="{{.CONFIG_DIR}}"
-        RELEASE_NAME="{{.RELEASE_NAME}}"
-        NAMESPACE="{{.NAMESPACE}}"
+        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        env
+        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
+        NAMESPACE="{{.RESOLVED_NAMESPACE}}"
+        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" destroy
 
   version:
     desc: Show the requested and materialized Domotic revisions
     deps: [source:sync]
     cmds:
       - echo "Requested revision {{.DOMOTIC_REQUESTED_REF}}"
-      - git -C "{{.DOMOTIC_SOURCE_DIR}}" log -1 --oneline
+      - git -C "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" log -1 --oneline

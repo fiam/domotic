@@ -109,6 +109,33 @@ if grep -Eq 'KUBE_CONTEXT.*default "[^"]+"' \
   fail "a production Taskfile selects a default Kubernetes context"
 fi
 
+# Included Taskfiles share their global-variable scope. Duplicate internal
+# names can silently make private configuration resolve relative to the wrong
+# Taskfile, so keep every included Taskfile's internal names distinct.
+duplicate_taskfile_var="$({
+  for taskfile in \
+    "$repository_root/Taskfile.yml" \
+    "$repository_root/bootstrap/Taskfile.yml" \
+    "$repository_root/infra/Taskfile.yml" \
+    "$repository_root/charts/domotic/Taskfile.yml" \
+    "$repository_root/dev/Taskfile.yml"; do
+    awk -v file="$taskfile" '
+      /^vars:/ { in_vars = 1; next }
+      in_vars && /^[^ ]/ { exit }
+      in_vars && /^  [A-Z0-9_]+:/ {
+        name = $1
+        sub(/:$/, "", name)
+        print name "\t" file
+      }
+    ' "$taskfile"
+  done
+} | sort | awk -F '\t' '
+  previous == $1 { print $1; exit }
+  { previous = $1 }
+')"
+[[ -z "$duplicate_taskfile_var" ]] ||
+  fail "included Taskfiles reuse global variable $duplicate_taskfile_var"
+
 # These helpers are invoked by a new Task process after the runtime wrapper
 # injects credentials. Task rejects internal tasks at a process entrypoint.
 for runtime_task in _deploy-dev _destroy-dev; do
@@ -270,50 +297,82 @@ equivalent_source_cache="$temp_root/equivalent/.domotic/source"
 cp "$repository_root/Taskfile.remote.yml" "$equivalent_taskfile"
 git clone --quiet "$fixture_repository" "$equivalent_source_cache"
 git -C "$equivalent_source_cache" remote set-url origin git@github.com:fiam/domotic.git
-task --silent --taskfile "$equivalent_taskfile" version \
+env \
   PRIVATE_ROOT="$temp_root/equivalent" \
   DOMOTIC_SOURCE_DIR="$equivalent_source_cache" \
-  DOMOTIC_REPOSITORY=https://github.com/fiam/domotic.git >/dev/null
+  DOMOTIC_REPOSITORY=https://github.com/fiam/domotic.git \
+  task --silent --taskfile "$equivalent_taskfile" version >/dev/null
 [[ "$(git -C "$equivalent_source_cache" config --local --get remote.origin.url)" == \
   https://github.com/fiam/domotic.git ]] ||
   fail "remote Taskfile did not normalize an equivalent GitHub origin"
 
 source_cache="$temp_root/remote/.domotic/source"
-task --silent --taskfile "$repository_root/Taskfile.remote.yml" version \
+env \
   PRIVATE_ROOT="$temp_root/remote" \
   DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" >/dev/null
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$repository_root/Taskfile.remote.yml" version >/dev/null
 [[ "$(git -C "$source_cache" rev-parse HEAD)" == "$revision" ]] ||
   fail "remote Taskfile did not materialize the pinned revision"
 
 printf '%s\n' modified >> "$source_cache/README.md"
 printf '%s\n' untracked > "$source_cache/untracked-test-file"
-task --silent --taskfile "$repository_root/Taskfile.remote.yml" version \
+env \
   PRIVATE_ROOT="$temp_root/remote" \
   DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" >/dev/null
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$repository_root/Taskfile.remote.yml" version >/dev/null
 [[ -z "$(git -C "$source_cache" status --short)" ]] ||
   fail "remote Taskfile did not normalize the source cache"
 
 tag_taskfile="$temp_root/Taskfile.remote.yml?ref=test-release"
 tag_source_cache="$temp_root/tagged/.domotic/source"
 cp "$repository_root/Taskfile.remote.yml" "$tag_taskfile"
-task --silent --taskfile "$tag_taskfile" version \
+env \
   PRIVATE_ROOT="$temp_root/tagged" \
   DOMOTIC_SOURCE_DIR="$tag_source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" >/dev/null
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$tag_taskfile" version >/dev/null
 [[ "$(git -C "$tag_source_cache" rev-parse HEAD)" == "$revision" ]] ||
   fail "remote Taskfile did not resolve the ref from its URL"
 
+# A generated private Taskfile loads the entrypoint over immutable HTTP rather
+# than through Task's shallow Git downloader. Confirm that its explicit pin is
+# honored even though the entrypoint itself has no ref query parameter.
+pinned_root="$temp_root/pinned"
+pinned_taskfile="$temp_root/Taskfile.pinned.yml"
+printf '%s\n' \
+  "version: '3'" \
+  'vars:' \
+  "  DOMOTIC_REF: $revision" \
+  'includes:' \
+  '  domotic:' \
+  "    taskfile: '$repository_root/Taskfile.remote.yml'" \
+  '    flatten: true' \
+  '    vars:' \
+  "      DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'" \
+  "      PRIVATE_ROOT: '$pinned_root'" \
+  "      DOMOTIC_SOURCE_DIR: '$pinned_root/.domotic/source'" \
+  "      DOMOTIC_REPOSITORY: '$fixture_repository'" \
+  > "$pinned_taskfile"
+task --silent --taskfile "$pinned_taskfile" version >/dev/null
+[[ "$(git -C "$pinned_root/.domotic/source" rev-parse HEAD)" == "$revision" ]] ||
+  fail "private Taskfile did not materialize its explicit source pin"
+
 initialized_root="$temp_root/initialized"
-task --silent --taskfile "$repository_root/Taskfile.remote.yml" init \
+env \
   PRIVATE_ROOT="$initialized_root" \
-  DOMOTIC_REPOSITORY="$fixture_repository"
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$repository_root/Taskfile.remote.yml" init
 grep -Fq "DOMOTIC_REF: $revision" "$initialized_root/Taskfile.yml" ||
   fail "remote initialization did not pin the selected revision"
-grep -Fq "BOOTSTRAP_STATE_FILE: '{{.ROOT_DIR}}/state/bootstrap.tfstate'" \
+grep -Fq \
+  "taskfile: 'https://raw.githubusercontent.com/fiam/domotic/{{.DOMOTIC_REF}}/Taskfile.remote.yml'" \
   "$initialized_root/Taskfile.yml" ||
-  fail "remote initialization did not configure encrypted bootstrap state"
+  fail "private Taskfile does not fetch its entrypoint by immutable commit URL"
+grep -Fq "DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'" \
+  "$initialized_root/Taskfile.yml" ||
+  fail "private Taskfile does not pass its source pin to the remote entrypoint"
 if grep -q 'KUBE_CONTEXT' "$initialized_root/Taskfile.yml"; then
   fail "remote initialization pinned a Kubernetes context"
 fi
@@ -328,15 +387,48 @@ fi
 [[ "$(git -C "$initialized_root" symbolic-ref --short HEAD)" == main ]] ||
   fail "remote initialization did not create the expected main branch"
 
+# Run the generated wrapper from its own repository with an encrypted-state
+# fixture. This catches path variables being evaluated in an included
+# Taskfile's directory instead of the private repository.
+install -d -m 0700 "$initialized_root/state"
+printf '%s\n' \
+  '{' \
+  '  "serial": 1,' \
+  '  "meta": {"domotic-bootstrap": "test"},' \
+  '  "encrypted_data": "ciphertext"' \
+  '}' > "$initialized_root/state/bootstrap.tfstate"
+sed -i.bak -E \
+  "s#taskfile: 'https://raw.githubusercontent.com/fiam/domotic/\{\{\.DOMOTIC_REF\}\}/Taskfile.remote.yml'#taskfile: '$repository_root/Taskfile.remote.yml'#" \
+  "$initialized_root/Taskfile.yml"
+rm "$initialized_root/Taskfile.yml.bak"
+sed -i.bak \
+  "/DOMOTIC_PINNED_REF:/a\\
+      DOMOTIC_REPOSITORY: '$fixture_repository'" \
+  "$initialized_root/Taskfile.yml"
+rm "$initialized_root/Taskfile.yml.bak"
+git -C "$initialized_root" add \
+  .gitignore \
+  Taskfile.yml \
+  config/bootstrap.tfvars \
+  config/infra/terraform.tfvars \
+  config/values.yaml \
+  state/bootstrap.tfstate
+rm -rf -- "$initialized_root/.domotic"
+(
+  cd "$initialized_root"
+  task --silent config:check >/dev/null
+)
+
 git -C "$fixture_repository" \
   -c user.name='Domotic Tests' \
   -c user.email='tests@example.invalid' \
   -c commit.gpgsign=false \
   commit --quiet --allow-empty -m 'test: newer remote revision'
 updated_revision="$(git -C "$fixture_repository" rev-parse HEAD)"
-task --silent --taskfile "$repository_root/Taskfile.remote.yml" domotic:update \
+env \
   PRIVATE_ROOT="$initialized_root" \
-  DOMOTIC_REPOSITORY="$fixture_repository"
+  DOMOTIC_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$repository_root/Taskfile.remote.yml" domotic:update
 grep -Fq "DOMOTIC_REF: $updated_revision" "$initialized_root/Taskfile.yml" ||
   fail "Domotic update did not pin the resolved revision"
 

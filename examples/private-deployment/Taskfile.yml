@@ -7,12 +7,10 @@ vars:
 
 includes:
   domotic:
-    taskfile: 'https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref={{.DOMOTIC_REF}}'
+    # Task's Git downloader treats ref as a branch or tag when performing a
+    # shallow clone. Fetch the entrypoint by immutable commit URL instead; the
+    # entrypoint then checks out the same commit into .domotic/source.
+    taskfile: 'https://raw.githubusercontent.com/fiam/domotic/{{.DOMOTIC_REF}}/Taskfile.remote.yml'
     flatten: true
     vars:
-      PRIVATE_ROOT: '{{.ROOT_DIR}}'
-      CONFIG_DIR: '{{.ROOT_DIR}}/config'
-      BOOTSTRAP_VARS_FILE: '{{.ROOT_DIR}}/config/bootstrap.tfvars'
-      BOOTSTRAP_STATE_FILE: '{{.ROOT_DIR}}/state/bootstrap.tfstate'
-      RELEASE_NAME: domotic
-      NAMESPACE: domotic
+      DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'
