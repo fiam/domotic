@@ -276,34 +276,21 @@ mv "$private_root/state/bootstrap.tfstate.bak" "$private_root/state/bootstrap.tf
 
 # Materialize a Git revision with the current remote entrypoint and scaffold.
 fixture_repository="$temp_root/source-repository"
-git clone --quiet "$repository_root" "$fixture_repository"
-if ! git -C "$repository_root" diff --quiet HEAD -- \
-  Taskfile.yml \
-  Taskfile.remote.yml \
-  examples/private-deployment \
-  scripts/config-check.sh \
-  scripts/tests/private-deployment.sh; then
-  git -C "$repository_root" diff --binary HEAD -- \
-    Taskfile.yml \
-    Taskfile.remote.yml \
-    examples/private-deployment \
-    scripts/config-check.sh \
-    scripts/tests/private-deployment.sh |
-    git -C "$fixture_repository" apply -
-fi
+install -d -m 0700 "$fixture_repository"
+git -C "$repository_root" archive HEAD | tar -x -C "$fixture_repository"
+git -C "$repository_root" diff --binary HEAD | git -C "$fixture_repository" apply -
 cp "$repository_root/examples/private-deployment/.opentofu-version" \
   "$fixture_repository/examples/private-deployment/.opentofu-version"
 cp "$repository_root/examples/private-deployment/config/bootstrap.tfvars" \
   "$fixture_repository/examples/private-deployment/config/bootstrap.tfvars"
+git -C "$fixture_repository" init --quiet -b main
 git -C "$fixture_repository" add -A
 git -C "$fixture_repository" add -f \
   examples/private-deployment/config/bootstrap.tfvars
-if ! git -C "$fixture_repository" diff --cached --quiet; then
-  git -C "$fixture_repository" \
-    -c user.name='Domotic Tests' \
-    -c user.email='tests@example.invalid' \
-    commit --quiet -m 'test: snapshot private deployment workflow'
-fi
+git -C "$fixture_repository" \
+  -c user.name='Domotic Tests' \
+  -c user.email='tests@example.invalid' \
+  commit --quiet -m 'test: snapshot private deployment workflow'
 
 revision="$(git -C "$fixture_repository" rev-parse HEAD)"
 git -C "$fixture_repository" branch test-release "$revision"
