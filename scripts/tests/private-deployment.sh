@@ -278,7 +278,10 @@ mv "$private_root/state/bootstrap.tfstate.bak" "$private_root/state/bootstrap.tf
 fixture_repository="$temp_root/source-repository"
 install -d -m 0700 "$fixture_repository"
 git -C "$repository_root" archive HEAD | tar -x -C "$fixture_repository"
-git -C "$repository_root" diff --binary HEAD | git -C "$fixture_repository" apply -
+if ! git -C "$repository_root" diff --quiet HEAD; then
+  git -C "$repository_root" diff --binary HEAD |
+    git -C "$fixture_repository" apply -
+fi
 cp "$repository_root/examples/private-deployment/.opentofu-version" \
   "$fixture_repository/examples/private-deployment/.opentofu-version"
 cp "$repository_root/examples/private-deployment/config/bootstrap.tfvars" \
