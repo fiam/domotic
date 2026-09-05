@@ -64,26 +64,34 @@ systemctl is-active bluetooth.service
 bluetoothctl list
 ```
 
-Then expose the host D-Bus directory read-only in the private deployment's
-`config/values.yaml`:
+The chart mounts the host's `/run/dbus` directory read-only at `/run/dbus` by
+default (`homeassistant.hostDbus`), and it already grants the `NET_ADMIN` and
+`NET_RAW` capabilities required for reliable Bluetooth management, so no
+values change is needed on a standard host. If the server keeps its system bus
+below `/var/run/dbus`, override the host path while the container mount stays
+at `/run/dbus`:
 
 ```yaml
 homeassistant:
-  volumes:
-    - name: host-dbus
-      hostPath:
-        path: /run/dbus
-        type: Directory
-  volumeMounts:
-    - name: host-dbus
-      mountPath: /run/dbus
-      readOnly: true
+  hostDbus:
+    path: /var/run/dbus
 ```
 
-Deploy the change with `task deploy`. The Home Assistant chart already grants
-the `NET_ADMIN` and `NET_RAW` capabilities required for reliable Bluetooth
-management. If the server keeps its system bus below `/var/run/dbus`, use that
-as the `hostPath.path` while retaining `/run/dbus` as the container mount path.
+On hosts without a system D-Bus (the mount uses a `Directory` hostPath, so a
+missing directory blocks pod startup), disable the mount instead:
+
+```yaml
+homeassistant:
+  hostDbus:
+    enabled: false
+```
+
+Deploy any change with `task deploy`.
+
+Deployments that previously exposed the bus through manual `volumes` and
+`volumeMounts` entries named `host-dbus` must delete that snippet from their
+private `config/values.yaml` before upgrading; the chart now fails rendering
+with an explicit message while both are present.
 
 ## 2. Configure and install k3s
 

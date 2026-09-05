@@ -42,6 +42,20 @@ customComponents:
       pullPolicy: IfNotPresent
     resources: {}
 
+# Install HACS (Home Assistant Community Store) from its pinned GitHub release
+# archive into /config/custom_components/hacs, with the same immutable,
+# checksum-verified delivery as customComponents.remote.
+# LOCKSTEP: when bumping the default Home Assistant version (image.tag /
+# Chart.yaml appVersion), bump hacs.version to the latest HACS release that
+# supports it and recompute sha256 from
+# https://github.com/hacs/integration/releases/download/<version>/hacs.zip.
+# See HOME_ASSISTANT_COMPATIBILITY.md and CUSTOM_INTEGRATIONS.md.
+# HACS still requires one-time manual setup in the UI (GitHub device flow).
+hacs:
+  enabled: true
+  version: "2.0.5"
+  sha256: 97be6b824a4f38e683728cc6dd72367f6b8bad0a43428b1b3b987a3087adf413
+
 # Create or authenticate the admin account through Home Assistant's built-in
 # but undocumented onboarding/login flows. OpenTofu seed mode always enables
 # this hook and supplies the Secret; restore mode disables it. The authenticated
@@ -254,6 +268,15 @@ autoscaling:
   maxReplicas: 100
   targetCPUUtilizationPercentage: 80
   # targetMemoryUtilizationPercentage: 80
+
+# Mount the host's system D-Bus socket directory read-only so Home Assistant
+# can reach BlueZ-managed Bluetooth adapters (see DEPLOYMENT.md). The container
+# path is always /run/dbus; set path to /var/run/dbus if the host keeps its bus
+# there. The Directory hostPath fails pod startup on hosts without a system bus
+# (for example Kind nodes); disable it there, as examples/values-kind.yaml does.
+hostDbus:
+  enabled: true
+  path: /run/dbus
 
 # Additional volumes on the output Deployment definition.
 volumes: []

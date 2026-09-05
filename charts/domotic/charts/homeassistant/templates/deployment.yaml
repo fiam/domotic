@@ -11,6 +11,27 @@
 {{- end }}
 {{- $_ := set $componentNames $component.name true }}
 {{- end }}
+{{- if .Values.hacs.enabled }}
+{{- if not (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+$" .Values.hacs.version) }}
+{{- fail "hacs.version must be an exact release version such as 2.0.5" }}
+{{- end }}
+{{- if not (regexMatch "^[a-fA-F0-9]{64}$" .Values.hacs.sha256) }}
+{{- fail "hacs.sha256 must contain 64 hexadecimal characters" }}
+{{- end }}
+{{- if hasKey $componentNames "hacs" }}
+{{- fail "customComponents must not declare hacs while hacs.enabled is true" }}
+{{- end }}
+{{- end }}
+{{- if .Values.hostDbus.enabled }}
+{{- if not (hasPrefix "/" .Values.hostDbus.path) }}
+{{- fail "hostDbus.path must be an absolute host path" }}
+{{- end }}
+{{- range concat .Values.volumes .Values.volumeMounts }}
+{{- if eq .name "host-dbus" }}
+{{- fail "volumes and volumeMounts must not define host-dbus while hostDbus.enabled is true; remove the manual D-Bus snippet from your values (see DEPLOYMENT.md) or set hostDbus.enabled=false" }}
+{{- end }}
+{{- end }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,6 +54,9 @@ spec:
         configmap.revision: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
         {{- if or .Values.customComponents.local .Values.customComponents.remote }}
         custom-components.revision: {{ printf "%s\n%s" (include (print $.Template.BasePath "/custom-components-configmaps.yaml") .) (toJson .Values.customComponents.remote) | sha256sum }}
+        {{- end }}
+        {{- if .Values.hacs.enabled }}
+        hacs.revision: {{ toJson .Values.hacs | sha256sum }}
         {{- end }}
         {{- with .Values.podAnnotations }}{{- toYaml . | nindent 8 }}{{- end }}
       labels:
@@ -209,6 +233,47 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         {{- end }}
+        {{- if .Values.hacs.enabled }}
+        - name: hacs-install
+          image: "{{ .Values.customComponents.installer.image.repository }}:{{ .Values.customComponents.installer.image.tag }}"
+          imagePullPolicy: {{ .Values.customComponents.installer.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -eu
+              target="/config/custom_components/hacs"
+              staging="/config/custom_components/.hacs.tmp"
+              mkdir -p /work/unpacked /config/custom_components
+              wget -q -O /work/hacs.zip "$HACS_URL"
+              echo "$HACS_SHA256  /work/hacs.zip" | sha256sum -c -
+              if unzip -l /work/hacs.zip | awk 'NR > 3 && NF >= 4 { print $4 }' | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+                echo "HACS archive contains an unsafe path" >&2
+                exit 1
+              fi
+              unzip -q /work/hacs.zip -d /work/unpacked
+              test -f /work/unpacked/manifest.json
+              rm -rf "$staging"
+              mkdir -p "$staging"
+              cp -R /work/unpacked/. "$staging/"
+              rm -rf "$target"
+              mv "$staging" "$target"
+          env:
+            - name: HACS_URL
+              value: "https://github.com/hacs/integration/releases/download/{{ .Values.hacs.version }}/hacs.zip"
+            - name: HACS_SHA256
+              value: {{ lower .Values.hacs.sha256 | quote }}
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: hacs-work
+              mountPath: /work
+          {{- with .Values.customComponents.installer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
         - name: custom-components-reconcile
           image: "{{ .Values.customComponents.installer.image.repository }}:{{ .Values.customComponents.installer.image.tag }}"
           imagePullPolicy: {{ .Values.customComponents.installer.image.pullPolicy }}
@@ -225,6 +290,9 @@ spec:
               cat > "$desired_file" <<'EOF'
               {{- range $component := concat .Values.customComponents.local .Values.customComponents.remote }}
               {{ $component.name }}
+              {{- end }}
+              {{- if .Values.hacs.enabled }}
+              hacs
               {{- end }}
               EOF
               if [ -f "$state_file" ]; then
@@ -275,6 +343,11 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /config
+            {{- if .Values.hostDbus.enabled }}
+            - name: host-dbus
+              mountPath: /run/dbus
+              readOnly: true
+            {{- end }}
             {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -301,6 +374,16 @@ spec:
         {{- $componentKey := include "homeassistant.customComponentKey" $component.name }}
         - name: custom-{{ $componentKey }}-work
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.hacs.enabled }}
+        - name: hacs-work
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.hostDbus.enabled }}
+        - name: host-dbus
+          hostPath:
+            path: {{ .Values.hostDbus.path | quote }}
+            type: Directory
         {{- end }}
         {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}

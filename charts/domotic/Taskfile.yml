@@ -85,10 +85,14 @@ tasks:
         fi
       - |
         ha_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/homeassistant/Chart.yaml)"
+        # The default HACS version is maintained in lockstep with the default
+        # Home Assistant version; see the hacs block in the chart values.
+        hacs_version="$(awk 'in_hacs && $1 == "version:" {gsub(/"/, "", $2); print $2; exit} /^hacs:/ {in_hacs=1}' charts/homeassistant/values.yaml)"
         cloudflared_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/cloudflared/Chart.yaml)"
         zigbee2mqtt_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' charts/zigbee2mqtt/Chart.yaml)"
         parent_version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' Chart.yaml)"
         test -n "$ha_version"
+        test -n "$hacs_version"
         test -n "$cloudflared_version"
         test -n "$zigbee2mqtt_version"
         test "$parent_version" = "$ha_version"
@@ -114,6 +118,18 @@ tasks:
           if printf '%s\n' "$rendered" | grep -q 'mountPath: /config/custom_components/'; then
             echo "$values_file must not select a custom integration" >&2
             exit 1
+          fi
+          printf '%s\n' "$rendered" | grep -q 'name: hacs-install'
+          printf '%s\n' "$rendered" |
+            grep -Fq "releases/download/${hacs_version}/hacs.zip"
+          if [ "$values_file" = ../../examples/values-kind.yaml ]; then
+            if printf '%s\n' "$rendered" | grep -q 'name: host-dbus'; then
+              echo 'kind values must not mount the host D-Bus directory' >&2
+              exit 1
+            fi
+          else
+            printf '%s\n' "$rendered" | grep -q 'name: host-dbus'
+            printf '%s\n' "$rendered" | grep -Fq 'path: "/run/dbus"'
           fi
         done
         production_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
@@ -150,6 +166,71 @@ tasks:
           --set 'homeassistant.customComponents.remote[0].archivePath=../fixture' \
           >/dev/null 2>&1; then
           echo 'unsafe remote custom component values must fail rendering' >&2
+          exit 1
+        fi
+      - |
+        hacs_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml)"
+        printf '%s\n' "$hacs_render" | grep -q 'name: hacs-install'
+        printf '%s\n' "$hacs_render" | grep -q 'HACS_SHA256'
+        printf '%s\n' "$hacs_render" | grep -q 'sha256sum -c -'
+        printf '%s\n' "$hacs_render" | grep -q 'HACS archive contains an unsafe path'
+        printf '%s\n' "$hacs_render" | grep -Fq 'test -f /work/unpacked/manifest.json'
+        printf '%s\n' "$hacs_render" | grep -qx '              hacs'
+        printf '%s\n' "$hacs_render" | grep -q 'mountPath: /run/dbus'
+        printf '%s\n' "$hacs_render" | grep -q 'readOnly: true'
+        disabled_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set homeassistant.hacs.enabled=false \
+          --set homeassistant.hostDbus.enabled=false)"
+        if printf '%s\n' "$disabled_render" | grep -q 'name: hacs-install'; then
+          echo 'disabled HACS must not render an installer' >&2
+          exit 1
+        fi
+        if printf '%s\n' "$disabled_render" | grep -qx '              hacs'; then
+          echo 'disabled HACS must not remain a reconcile-managed component' >&2
+          exit 1
+        fi
+        if printf '%s\n' "$disabled_render" | grep -q 'name: host-dbus'; then
+          echo 'disabled hostDbus must not mount the host D-Bus directory' >&2
+          exit 1
+        fi
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set homeassistant.hacs.sha256=invalid \
+          >/dev/null 2>&1; then
+          echo 'invalid HACS sha256 values must fail rendering' >&2
+          exit 1
+        fi
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set homeassistant.hacs.version=latest \
+          >/dev/null 2>&1; then
+          echo 'mutable HACS versions must fail rendering' >&2
+          exit 1
+        fi
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set 'homeassistant.customComponents.remote[0].name=hacs' \
+          --set 'homeassistant.customComponents.remote[0].url=https://example.invalid/fixture.tar.gz' \
+          --set 'homeassistant.customComponents.remote[0].sha256=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+          --set 'homeassistant.customComponents.remote[0].archivePath=fixture/custom_components/hacs' \
+          >/dev/null 2>&1; then
+          echo 'custom components named hacs must fail rendering while HACS is enabled' >&2
+          exit 1
+        fi
+        if helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set 'homeassistant.volumes[0].name=host-dbus' \
+          --set 'homeassistant.volumes[0].hostPath.path=/run/dbus' \
+          >/dev/null 2>&1; then
+          echo 'manual host-dbus volumes must fail rendering while hostDbus is enabled' >&2
           exit 1
         fi
       - |

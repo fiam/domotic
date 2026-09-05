@@ -1,8 +1,9 @@
 # Home Assistant custom integrations
 
-This repository does not ship any custom Home Assistant integration by
-default. Deployments opt into integrations explicitly through OpenTofu or
-private Helm values.
+This repository installs exactly one custom integration by default: HACS,
+delivered from a pinned, checksum-verified release archive (see
+[HACS](#hacs)). Every other integration is opted into explicitly through
+OpenTofu or private Helm values.
 
 ## Recommended: OpenTofu-managed archive
 
@@ -115,6 +116,34 @@ The synced files are intentionally outside OpenTofu and Helm. They survive pod
 restarts but not deletion of the Kind cluster. This workflow is for testing a
 local working tree only; use an immutable, checksum-pinned artifact for a
 long-lived deployment.
+
+## HACS
+
+The chart installs [HACS](https://hacs.xyz) by default through a dedicated
+init container. Delivery follows the same rules as `customComponents.remote`:
+the `hacs.version` release archive is fetched from GitHub, verified against
+`hacs.sha256`, and staged atomically into `/config/custom_components/hacs` on
+the writable PVC. The default version is maintained in lockstep with the
+chart's default Home Assistant image: whenever the Home Assistant version pin
+changes, bump `hacs.version` to the latest HACS release supporting it and
+recompute the digest:
+
+```sh
+curl -fsSLO https://github.com/hacs/integration/releases/download/<version>/hacs.zip
+shasum -a 256 hacs.zip
+```
+
+Setup is manual: HACS authenticates through GitHub's interactive device flow,
+which the onboarding hook cannot drive, so finish configuration once in the UI
+(Settings → Devices & services → Add integration → HACS).
+
+Integrations that HACS itself installs into `custom_components/` are
+unmanaged and unpinned; the chart's reconciler never touches them, and the
+immutability guarantees above do not apply. Prefer migrating long-lived
+integrations to `customComponents.remote` entries. Setting
+`hacs.enabled: false` removes only the managed `hacs` directory on the next
+rollout — HACS-installed integrations and HACS `.storage` data remain, so
+remove them through the UI first.
 
 ## Upgrades and removal
 

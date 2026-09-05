@@ -7,6 +7,10 @@ homeassistant:
     parentRefs:
     - name: gateway
       namespace: default
+  # Kind nodes have no host D-Bus/BlueZ; the Directory hostPath would block
+  # pod startup.
+  hostDbus:
+    enabled: false
 
 zigbee2mqtt:
   httpRoute:

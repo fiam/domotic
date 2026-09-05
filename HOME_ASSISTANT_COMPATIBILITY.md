@@ -27,7 +27,7 @@ Last verified: **2026-09-04**
 | Integration flow endpoint | `/api/config/config_entries/flow` |
 | HTTP settings commands | `http/config`, `http/config/configure`, `http/config/promote` |
 | Onboarding steps | `user`, `core_config`, `analytics`, `integration` |
-| Custom integration delivery | no integration enabled by default; checksum-pinned remote installation and writable-PVC restore verified |
+| Custom integration delivery | HACS installed by default from a pinned release; checksum-pinned remote installation and writable-PVC restore verified |
 | Zigbee2MQTT snapshot staging | hourly CronJob; validated latest ZIP under `/config/.domotic/zigbee2mqtt` |
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
@@ -118,7 +118,10 @@ required payloads and migration behavior more precisely than user-facing docs.
 2. Audit every source above at that tag. Update the version table, API
    payloads, onboarding client, and tests before changing the image pin.
 3. Audit every user-configured custom integration against the proposed image.
-   Upgrade or remove incompatible integrations before testing the stack.
+   Upgrade or remove incompatible integrations before testing the stack. Bump
+   the default `hacs.version` and `hacs.sha256` to the latest HACS release
+   supporting the proposed Home Assistant version, and exercise HACS in the
+   Kind test.
 4. Run `task check`.
 5. Create a fresh Kind cluster and Home Assistant PVC. Bootstrap isolated R2
    state and backup buckets, then supply the required seed-mode credentials
@@ -227,7 +230,8 @@ preserved the last valid archive and removed its temporary files. Inclusion in
 a native R2 backup and recovery of the valid staged ZIP were verified. Import
 into a new Zigbee2MQTT volume has not yet been exercised.
 
-The chart renders with no custom integrations by default. A checksum-pinned
+The chart installs HACS by default from a checksum-pinned release archive;
+user-selected integrations remain opt-in. A checksum-pinned
 remote integration was installed at runtime and survived the R2 backup and
 restore test. The first restore attempt also exposed why read-only submounts
 below `/config` are unsafe: Home Assistant must clear that directory during
