@@ -43,8 +43,8 @@ run "r2_credentials_are_derived_for_homeassistant" {
   variables {
     cloudflare_account_id                   = "00000000000000000000000000000000"
     cloudflare_domain                       = "example.com"
-    kubernetes_namespace                    = "domotic-test"
-    r2_backup_bucket_name                   = "domotic-test-backups"
+    kubernetes_namespace                    = "kube4ha-test"
+    r2_backup_bucket_name                   = "kube4ha-test-backups"
     homeassistant_backup_encryption_enabled = true
     r2_backup_credentials = {
       access_key_id     = "backup-id"
@@ -77,7 +77,7 @@ run "r2_credentials_are_derived_for_homeassistant" {
     condition = (
       yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.enabled &&
       yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.agentName ==
-      "domotic-test-backups" &&
+      "kube4ha-test-backups" &&
       yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.retentionCopies == 7 &&
       yamldecode(output.helm_values_yaml).homeassistant.r2Backup.automatic.existingSecret.name ==
       "homeassistant-backup-encryption"
@@ -100,8 +100,8 @@ run "r2_backups_are_unencrypted_without_a_password" {
   variables {
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
-    kubernetes_namespace  = "domotic-test"
-    r2_backup_bucket_name = "domotic-test-backups"
+    kubernetes_namespace  = "kube4ha-test"
+    r2_backup_bucket_name = "kube4ha-test-backups"
     r2_backup_credentials = {
       access_key_id     = "backup-id"
       secret_access_key = "backup-secret"

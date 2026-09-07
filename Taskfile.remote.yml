@@ -6,12 +6,13 @@ version: '3'
 
 vars:
   RESOLVED_PRIVATE_ROOT: '{{.PRIVATE_ROOT | default .USER_WORKING_DIR}}'
-  RESOLVED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/config" .RESOLVED_PRIVATE_ROOT)}}'
-  RESOLVED_DOMOTIC_SOURCE_DIR: '{{.DOMOTIC_SOURCE_DIR | default (printf "%s/.domotic/source" .RESOLVED_PRIVATE_ROOT)}}'
-  RESOLVED_DOMOTIC_REPOSITORY: '{{.DOMOTIC_REPOSITORY | default "https://github.com/fiam/domotic.git"}}'
-  DOMOTIC_REQUESTED_REF:
+  RESOLVED_CONFIG_DIR: '{{.KUBE4HA_CONFIG_DIR | default .DOMOTIC_CONFIG_DIR | default (printf "%s/config" .RESOLVED_PRIVATE_ROOT)}}'
+  REMOTE_CACHE_NAME: '{{if .DOMOTIC_PINNED_REF}}.domotic{{else}}.kube4ha{{end}}'
+  RESOLVED_KUBE4HA_SOURCE_DIR: '{{.KUBE4HA_SOURCE_DIR | default .DOMOTIC_SOURCE_DIR | default (printf "%s/%s/source" .RESOLVED_PRIVATE_ROOT .REMOTE_CACHE_NAME)}}'
+  RESOLVED_KUBE4HA_REPOSITORY: '{{.KUBE4HA_REPOSITORY | default .DOMOTIC_REPOSITORY | default "https://github.com/fiam/kube4ha.git"}}'
+  KUBE4HA_REQUESTED_REF:
     sh: |
-      requested_ref='{{.DOMOTIC_PINNED_REF | default ""}}'
+      requested_ref='{{.KUBE4HA_PINNED_REF | default .DOMOTIC_PINNED_REF | default ""}}'
       if test -z "$requested_ref"; then
         requested_ref="$({
           printf '%s\n' '{{.TASKFILE}}' |
@@ -26,16 +27,16 @@ vars:
         })"
       fi
       printf '%s\n' "${requested_ref:-main}"
-  RESOLVED_BOOTSTRAP_VARS_FILE: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
-  RESOLVED_BOOTSTRAP_STATE_FILE: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .RESOLVED_PRIVATE_ROOT)}}'
-  RESOLVED_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
-  RESOLVED_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
+  RESOLVED_BOOTSTRAP_VARS_FILE: '{{.KUBE4HA_BOOTSTRAP_VARS_FILE | default .DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .RESOLVED_CONFIG_DIR)}}'
+  RESOLVED_BOOTSTRAP_STATE_FILE: '{{.KUBE4HA_BOOTSTRAP_STATE_FILE | default .DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .RESOLVED_PRIVATE_ROOT)}}'
+  RESOLVED_RELEASE_NAME: '{{if .RELEASE_NAME}}{{.RELEASE_NAME}}{{else if .DOMOTIC_PINNED_REF}}domotic{{else}}kube4ha{{end}}'
+  RESOLVED_NAMESPACE: '{{if .NAMESPACE}}{{.NAMESPACE}}{{else if .DOMOTIC_PINNED_REF}}domotic{{else}}kube4ha{{end}}'
   RESOLVED_SSH_USER: '{{.SSH_USER | default ""}}'
   RESOLVED_SSH_HOST: '{{.SSH_HOST | default ""}}'
 
 env:
-  DOMOTIC_SSH_USER: '{{.RESOLVED_SSH_USER}}'
-  DOMOTIC_SSH_HOST: '{{.RESOLVED_SSH_HOST}}'
+  KUBE4HA_SSH_USER: '{{.RESOLVED_SSH_USER}}'
+  KUBE4HA_SSH_HOST: '{{.RESOLVED_SSH_HOST}}'
 
 tasks:
   default:
@@ -45,12 +46,12 @@ tasks:
 
   source:sync:
     internal: true
-    desc: Materialize the requested Domotic revision in the ignored local cache
+    desc: Materialize the requested kube4ha revision in the ignored local cache
     cmds:
       - |
-        requested_ref='{{.DOMOTIC_REQUESTED_REF}}'
-        repository='{{.RESOLVED_DOMOTIC_REPOSITORY}}'
-        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
+        requested_ref='{{.KUBE4HA_REQUESTED_REF}}'
+        repository='{{.RESOLVED_KUBE4HA_REPOSITORY}}'
+        source_dir='{{.RESOLVED_KUBE4HA_SOURCE_DIR}}'
 
         test -n "$requested_ref" || {
           echo 'The Taskfile URL has an empty ref parameter.' >&2
@@ -89,7 +90,12 @@ tasks:
               ;;
           esac
           github_path="${github_path%/}"
-          printf 'github.com/%s\n' "${github_path%.git}"
+          github_path="${github_path%.git}"
+          # GitHub redirects the old repository after the project rename.
+          if test "$github_path" = fiam/domotic; then
+            github_path=fiam/kube4ha
+          fi
+          printf 'github.com/%s\n' "$github_path"
         }
 
         cached_repository="$(
@@ -132,7 +138,7 @@ tasks:
     cmds:
       - |
         private_root='{{.RESOLVED_PRIVATE_ROOT}}'
-        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
+        source_dir='{{.RESOLVED_KUBE4HA_SOURCE_DIR}}'
         ref="$(git -C "$source_dir" rev-parse HEAD)"
 
         test ! -e "$private_root/Taskfile.yml" || {
@@ -159,12 +165,12 @@ tasks:
     deps: [source:sync]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        bootstrap "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        bootstrap "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
-        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
+        KUBE4HA_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        KUBE4HA_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" bootstrap:apply
       - |
         printf 'Bootstrap state updated: %s\n' '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
         printf 'Review and commit that encrypted file before deploying.\n'
@@ -174,12 +180,12 @@ tasks:
     deps: [source:sync]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        rotate-cloudflare-token "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        rotate-cloudflare-token "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
-        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" bootstrap:apply
+        KUBE4HA_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        KUBE4HA_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" bootstrap:apply
       - |
         printf 'Cloudflare token replaced in encrypted bootstrap state.\n'
         printf 'Review and commit %s.\n' '{{.RESOLVED_BOOTSTRAP_STATE_FILE}}'
@@ -189,10 +195,10 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/rotate-recovery-passphrase.sh"
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}"
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/rotate-recovery-passphrase.sh"
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}"
         "{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
 
   config:check:
@@ -201,18 +207,18 @@ tasks:
     cmds:
       - >-
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
-        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" config:check
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_BOOTSTRAP_VARS_FILE="{{.RESOLVED_BOOTSTRAP_VARS_FILE}}"
+        KUBE4HA_BOOTSTRAP_STATE_FILE="{{.RESOLVED_BOOTSTRAP_STATE_FILE}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" config:check
 
-  domotic:update:
-    desc: Update the pinned Domotic revision without deploying it
+  kube4ha:update:
+    desc: Update the pinned kube4ha revision without deploying it
     deps: [source:sync]
     cmds:
       - |
         target_ref='{{.REF | default "main"}}'
-        source_dir='{{.RESOLVED_DOMOTIC_SOURCE_DIR}}'
+        source_dir='{{.RESOLVED_KUBE4HA_SOURCE_DIR}}'
         private_taskfile='{{.RESOLVED_PRIVATE_ROOT}}/Taskfile.yml'
 
         test -n "$target_ref" || {
@@ -223,10 +229,14 @@ tasks:
           echo "Expected a regular private Taskfile: $private_taskfile" >&2
           exit 1
         }
-        test "$(grep -Ec '^  DOMOTIC_REF:' "$private_taskfile")" -eq 1 || {
-          echo "Expected exactly one DOMOTIC_REF in $private_taskfile" >&2
+        test "$(grep -Ec '^  (KUBE4HA|DOMOTIC)_REF:' "$private_taskfile")" -eq 1 || {
+          echo "Expected exactly one KUBE4HA_REF or legacy DOMOTIC_REF in $private_taskfile" >&2
           exit 1
         }
+        pin_name=KUBE4HA_REF
+        if grep -q '^  DOMOTIC_REF:' "$private_taskfile"; then
+          pin_name=DOMOTIC_REF
+        fi
 
         if printf '%s\n' "$target_ref" | grep -Eq '^[0-9a-fA-F]{40}$'; then
           resolved_ref="$target_ref"
@@ -244,17 +254,22 @@ tasks:
         resolved_ref="$(git -C "$source_dir" rev-parse "$resolved_ref^{commit}")"
 
         sed -i.bak -E \
-          "s/^  DOMOTIC_REF:.*/  DOMOTIC_REF: $resolved_ref/" \
+          "s/^  ${pin_name}:.*/  ${pin_name}: $resolved_ref/" \
           "$private_taskfile"
         rm "$private_taskfile.bak"
-        grep -Fqx "  DOMOTIC_REF: $resolved_ref" "$private_taskfile"
+        grep -Fqx "  ${pin_name}: $resolved_ref" "$private_taskfile"
 
         git -C "$source_dir" checkout --quiet --detach --force "$resolved_ref"
         git -C "$source_dir" reset --quiet --hard "$resolved_ref"
         git -C "$source_dir" clean -ffd
 
-        printf 'Domotic is now pinned to %s (%s).\n' "$resolved_ref" "$target_ref"
+        printf 'kube4ha is now pinned to %s (%s).\n' "$resolved_ref" "$target_ref"
         printf 'Review and commit the Taskfile.yml change before deploying.\n'
+
+  domotic:update:
+    desc: Legacy alias for kube4ha:update
+    cmds:
+      - task: kube4ha:update
 
   k3s:context:
     desc: Import the k3s server into the default kubeconfig
@@ -263,15 +278,15 @@ tasks:
       vars: [SSH_USER, SSH_HOST]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/k3s-import-context.sh"
-        --user "$DOMOTIC_SSH_USER"
-        "$DOMOTIC_SSH_HOST"
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/k3s-import-context.sh"
+        --user "$KUBE4HA_SSH_USER"
+        "$KUBE4HA_SSH_HOST"
 
   check:
     desc: Validate the pinned source and private configuration
     deps: [source:sync]
     cmds:
-      - task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" check
+      - task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" check
       - task: config:check
 
   plan:
@@ -279,24 +294,24 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" infra:plan
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" infra:plan
 
   deploy:
     desc: Apply OpenTofu and deploy the pinned Helm chart
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" deploy
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" deploy
 
   homeassistant:deploy:
     desc: Deploy the Helm release without applying OpenTofu
@@ -304,20 +319,20 @@ tasks:
     cmds:
       - >-
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" helm:deploy
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" helm:deploy
 
   homeassistant:update:
-    desc: Update Home Assistant to the version verified by the Domotic pin
+    desc: Update Home Assistant to the version verified by the kube4ha pin
     deps: [config:check]
     cmds:
       - |
         version="$(awk '$1 == "appVersion:" {gsub(/"/, "", $2); print $2}' \
-          "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/charts/domotic/charts/homeassistant/Chart.yaml")"
+          "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/charts/kube4ha/charts/homeassistant/Chart.yaml")"
         test -n "$version"
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/set-homeassistant-version.sh" \
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/set-homeassistant-version.sh" \
           "{{.RESOLVED_CONFIG_DIR}}/values.yaml" "$version"
         printf 'Home Assistant is pinned to %s in config/values.yaml.\n' "$version"
       - task: homeassistant:deploy
@@ -327,37 +342,37 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" restore
 
   restore:plan:
     desc: Plan the native-backup restore preparation
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore:plan
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" restore:plan
 
   restore:complete:
     desc: Record the restored owner credential and resume reconciliation
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" restore:complete
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" restore:complete
 
   credentials:show:
     desc: Reveal Home Assistant recovery credentials
@@ -365,22 +380,22 @@ tasks:
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        task --yes --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --yes --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" credentials:show
 
   credentials:update:
     desc: Record a changed Home Assistant owner credential in encrypted state
     deps: [config:check]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:update
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" credentials:update
 
   zigbee:import:
     desc: Import an existing Zigbee identity into encrypted state
@@ -389,12 +404,12 @@ tasks:
       vars: [SOURCE]
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         SOURCE="{{.SOURCE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" zigbee:import
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" zigbee:import
 
   status:
     desc: Show the deployed release and workload status
@@ -404,7 +419,7 @@ tasks:
         env
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" helm:status
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" helm:status
 
   destroy:
     desc: Remove workloads and ordinary infrastructure, preserving R2 buckets
@@ -412,17 +427,17 @@ tasks:
     prompt: This removes the deployment but preserves R2 state and backups. Continue?
     cmds:
       - >-
-        "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
-        runtime "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
+        "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}/scripts/with-opentofu-environment.sh"
+        runtime "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" "{{.RESOLVED_PRIVATE_ROOT}}" "{{.RESOLVED_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.RESOLVED_CONFIG_DIR}}"
         RELEASE_NAME="{{.RESOLVED_RELEASE_NAME}}"
         NAMESPACE="{{.RESOLVED_NAMESPACE}}"
-        task --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" destroy
+        task --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" destroy
 
   version:
-    desc: Show the requested and materialized Domotic revisions
+    desc: Show the requested and materialized kube4ha revisions
     deps: [source:sync]
     cmds:
-      - echo "Requested revision {{.DOMOTIC_REQUESTED_REF}}"
-      - git -C "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" log -1 --oneline
+      - echo "Requested revision {{.KUBE4HA_REQUESTED_REF}}"
+      - git -C "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" log -1 --oneline

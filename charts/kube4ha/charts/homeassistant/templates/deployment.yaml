@@ -283,10 +283,14 @@ spec:
           args:
             - |
               set -eu
-              state_dir=/config/.domotic
+              state_dir=/config/.kube4ha
               state_file="$state_dir/managed-custom-components"
               desired_file="$state_file.new"
               mkdir -p "$state_dir" /config/custom_components
+              legacy_state_file=/config/.domotic/managed-custom-components
+              if [ ! -f "$state_file" ] && [ -f "$legacy_state_file" ]; then
+                cp "$legacy_state_file" "$state_file"
+              fi
               cat > "$desired_file" <<'EOF'
               {{- range $component := concat .Values.customComponents.local .Values.customComponents.remote }}
               {{ $component.name }}

@@ -80,7 +80,7 @@ for component_directory in "${component_directories[@]}"; do
   domains+=("$domain")
 done
 
-temp_directory="$(mktemp -d "${TMPDIR:-/tmp}/domotic-integration-sync.XXXXXX")"
+temp_directory="$(mktemp -d "${TMPDIR:-/tmp}/kube4ha-integration-sync.XXXXXX")"
 cleanup() {
   rm -rf -- "$temp_directory"
 }
@@ -174,8 +174,8 @@ pod="$(
 [[ -n "$pod" ]] || fail "no ready Home Assistant pod found for $namespace/$deployment"
 
 run_id="$(date -u +%Y%m%dT%H%M%SZ)-$$"
-stage="/config/.domotic-local-integrations/staging/$run_id"
-backup="/config/.domotic-local-integrations/backups/$run_id"
+stage="/config/.kube4ha-local-integrations/staging/$run_id"
+backup="/config/.kube4ha-local-integrations/backups/$run_id"
 
 kubectl --context "$kube_context" --namespace "$namespace" \
   exec "$pod" --container homeassistant -- \

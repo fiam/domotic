@@ -1,11 +1,11 @@
 version: '3'
 
 vars:
-  INFRA_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
+  INFRA_REQUESTED_CONFIG_DIR: '{{.KUBE4HA_CONFIG_DIR | default .DOMOTIC_CONFIG_DIR | default (printf "%s/.." .ROOT_DIR)}}'
   INFRA_CONFIG_DIR: '{{if isAbs (toString .INFRA_REQUESTED_CONFIG_DIR)}}{{.INFRA_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .INFRA_REQUESTED_CONFIG_DIR)}}{{end}}'
-  INFRA_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .INFRA_CONFIG_DIR)}}'
-  INFRA_HELM_VALUES_FILE: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .INFRA_CONFIG_DIR)}}'
-  INFRA_VALUES_FILE: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .INFRA_CONFIG_DIR)}}'
+  INFRA_TF_VARS_FILE: '{{.KUBE4HA_TF_VARS_FILE | default .DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .INFRA_CONFIG_DIR)}}'
+  INFRA_HELM_VALUES_FILE: '{{.KUBE4HA_GENERATED_HELM_VALUES_FILE | default .DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .INFRA_CONFIG_DIR)}}'
+  INFRA_VALUES_FILE: '{{.KUBE4HA_PRIVATE_HELM_VALUES_FILE | default .DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .INFRA_CONFIG_DIR)}}'
   INFRA_HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE: '{{.HOMEASSISTANT_BOOTSTRAP_MODE_OVERRIDE | default ""}}'
   INFRA_CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
 
@@ -28,11 +28,11 @@ tasks:
         msg: The OpenTofu state passphrase was not provided.
       - sh: test -n "${CLOUDFLARE_API_TOKEN:-}"
         msg: The Cloudflare API token was not provided by bootstrap state.
-      - sh: test -n "${DOMOTIC_R2_ENDPOINT:-}"
+      - sh: test -n "${KUBE4HA_R2_ENDPOINT:-}"
         msg: The R2 endpoint was not provided by bootstrap state.
-      - sh: test -n "${DOMOTIC_STATE_BUCKET:-}"
+      - sh: test -n "${KUBE4HA_STATE_BUCKET:-}"
         msg: The R2 state bucket was not provided by bootstrap state.
-      - sh: test -n "${DOMOTIC_STATE_KEY:-}"
+      - sh: test -n "${KUBE4HA_STATE_KEY:-}"
         msg: The R2 state object key was not provided by bootstrap state.
       - sh: test -n "${AWS_ACCESS_KEY_ID:-}" && test -n "${AWS_SECRET_ACCESS_KEY:-}"
         msg: The bucket-scoped R2 state credential was not provided.
@@ -45,10 +45,10 @@ tasks:
     cmds:
       - >-
         tofu init -input=false -reconfigure
-        -backend-config="bucket=${DOMOTIC_STATE_BUCKET}"
-        -backend-config="key=${DOMOTIC_STATE_KEY}"
+        -backend-config="bucket=${KUBE4HA_STATE_BUCKET}"
+        -backend-config="key=${KUBE4HA_STATE_KEY}"
         -backend-config="region=auto"
-        -backend-config="endpoints={s3=\"${DOMOTIC_R2_ENDPOINT}\"}"
+        -backend-config="endpoints={s3=\"${KUBE4HA_R2_ENDPOINT}\"}"
         -backend-config="skip_credentials_validation=true"
         -backend-config="skip_metadata_api_check=true"
         -backend-config="skip_region_validation=true"
@@ -122,11 +122,11 @@ tasks:
     desc: Validate OpenTofu configuration without accessing remote state
     cmds:
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.INFRA_CHECK_TF_DATA_DIR}}"
         tofu init -backend=false -input=false
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.INFRA_CHECK_TF_DATA_DIR}}"
         tofu validate
 
@@ -134,11 +134,11 @@ tasks:
     desc: Run OpenTofu tests with mocked external providers
     cmds:
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.INFRA_CHECK_TF_DATA_DIR}}"
         tofu init -backend=false -input=false
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.INFRA_CHECK_TF_DATA_DIR}}"
         tofu test
 

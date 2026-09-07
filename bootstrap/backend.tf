@@ -7,6 +7,7 @@ variable "state_passphrase" {
 terraform {
   backend "local" {}
 
+  # Persisted metadata identity: retain this alias to decrypt pre-rename state.
   encryption {
     key_provider "pbkdf2" "bootstrap" {
       passphrase               = var.state_passphrase

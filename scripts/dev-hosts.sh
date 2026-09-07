@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-begin_marker="# BEGIN domotic-kind"
-end_marker="# END domotic-kind"
+begin_marker="# BEGIN kube4ha-kind"
+end_marker="# END kube4ha-kind"
 hosts_file="${HOSTS_FILE:-/etc/hosts}"
 
 fail() {
@@ -46,7 +46,7 @@ case "$action" in
     ;;
 esac
 
-temp_file="$(mktemp "${TMPDIR:-/tmp}/domotic-hosts.XXXXXX")"
+temp_file="$(mktemp "${TMPDIR:-/tmp}/kube4ha-hosts.XXXXXX")"
 cleanup() {
   rm -f -- "$temp_file"
 }
@@ -54,15 +54,16 @@ trap cleanup EXIT HUP INT TERM
 
 # Remove only the block managed by this repository. Refuse a malformed block
 # rather than risking an unintended rewrite of the hosts file.
-awk -v begin="$begin_marker" -v end="$end_marker" '
-  $0 == begin {
+awk -v begin="$begin_marker" -v end="$end_marker" \
+  -v legacy_begin="# BEGIN domotic-kind" -v legacy_end="# END domotic-kind" '
+  $0 == begin || $0 == legacy_begin {
     if (managed) exit 2
-    managed = 1
+    managed = ($0 == begin ? end : legacy_end)
     next
   }
-  $0 == end {
-    if (!managed) exit 2
-    managed = 0
+  $0 == end || $0 == legacy_end {
+    if (!managed || $0 != managed) exit 2
+    managed = ""
     next
   }
   !managed { print }
@@ -87,7 +88,7 @@ if [[ "$action" == "install" ]]; then
   } >> "$temp_file"
 fi
 
-backup_file="${hosts_file}.domotic.bak"
+backup_file="${hosts_file}.kube4ha.bak"
 cp -p -- "$hosts_file" "$backup_file"
 cp -- "$temp_file" "$hosts_file"
 
@@ -95,6 +96,6 @@ if [[ "$action" == "install" ]]; then
   printf 'Configured %s for %s and %s.\n' \
     "$hosts_file" "$homeassistant_hostname" "$zigbee2mqtt_hostname"
 else
-  printf 'Removed the Domotic Kind block from %s.\n' "$hosts_file"
+  printf 'Removed the kube4ha Kind block from %s.\n' "$hosts_file"
 fi
 printf 'Previous contents are available at %s.\n' "$backup_file"

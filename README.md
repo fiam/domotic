@@ -1,4 +1,7 @@
-# Domotic
+# kube4ha — Kubernetes for Home Assistant
+
+Previously called Domotic. Existing installations can upgrade in place using
+the [migration guide](MIGRATION.md).
 
 [![Kubernetes v1.23+](https://img.shields.io/badge/Kubernetes-v1.23%2B-326CE5?style=flat-square&logo=kubernetes&logoColor=white)](https://kubernetes.io/releases/)
 [![Home Assistant 2026.9.0](https://img.shields.io/badge/Home%20Assistant-2026.9.0-18BCF2?style=flat-square&logo=home-assistant&logoColor=white)](https://www.home-assistant.io/)
@@ -7,7 +10,7 @@
 
 Home Assistant, Zigbee2MQTT, Mosquitto, and Cloudflare Tunnel on Kubernetes.
 
-Domotic works with any Kubernetes environment that ships Gateway API. The
+kube4ha works with any Kubernetes environment that ships Gateway API. The
 [k3s guide](DEPLOYMENT.md) covers a common single-server home setup, but k3s is
 not required.
 
@@ -25,7 +28,7 @@ mkdir home-deployment
 cd home-deployment
 
 task --taskfile \
-  'https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref=main' \
+  'https://github.com/fiam/kube4ha.git//Taskfile.remote.yml?ref=main' \
   init
 ```
 
@@ -72,7 +75,7 @@ task bootstrap
 
 The resulting state file is encrypted by OpenTofu. Keep the recovery passphrase
 in a password manager; it is not stored in the repository or the cluster. For
-automation, provide it as `DOMOTIC_RECOVERY_PASSPHRASE`.
+automation, provide it as `KUBE4HA_RECOVERY_PASSPHRASE`.
 
 ### Configure and deploy
 
@@ -159,7 +162,7 @@ See [BACKUP.md](BACKUP.md) for recovery details.
 | `task credentials:update` | Record a Home Assistant password changed in the UI. |
 | `task zigbee:import SOURCE=…` | Import an existing Zigbee identity. |
 | `task restore`, `task restore:complete` | Restore a native Home Assistant backup. |
-| `task domotic:update REF=main` | Update the pinned Domotic source. |
+| `task kube4ha:update REF=main` | Update the pinned kube4ha source. |
 | `task homeassistant:update` | Deploy the Home Assistant version verified by that source. |
 | `task cloudflare-token:update` | Replace the account token in encrypted bootstrap state. |
 | `task recovery-passphrase:update` | Re-encrypt both state files with a new passphrase. |

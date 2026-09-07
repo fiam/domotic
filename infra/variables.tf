@@ -13,7 +13,7 @@ variable "cloudflare_account_id" {
 variable "cloudflare_tunnel_name" {
   type        = string
   description = "Friendly name for the tunnel"
-  default     = "domotic-tunnel"
+  default     = "kube4ha-tunnel"
 }
 
 variable "cloudflare_domain" {
@@ -30,13 +30,13 @@ variable "cloudflare_homeassistant_subdomain" {
 variable "kubernetes_namespace" {
   type        = string
   description = "Kubernetes namespace to deploy resources"
-  default     = "domotic"
+  default     = "kube4ha"
 }
 
 variable "helm_release_name" {
   type        = string
   description = "Helm release name (used for computing service FQDNs)"
-  default     = "domotic"
+  default     = "kube4ha"
 }
 
 variable "local_http_hostnames" {

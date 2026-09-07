@@ -58,7 +58,7 @@ spec:
                   umask 077
 
                   backup_directory="/config/${BACKUP_DIRECTORY}"
-                  work_directory="/config/.cache/domotic-zigbee2mqtt"
+                  work_directory="/config/.cache/kube4ha-zigbee2mqtt"
                   response_file="${work_directory}/response-${HOSTNAME}"
                   compact_file="${work_directory}/response-${HOSTNAME}.compact"
                   archive_file="${work_directory}/backup-${HOSTNAME}.zip"

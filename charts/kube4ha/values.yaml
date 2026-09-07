@@ -1,4 +1,4 @@
-# Domotic - Home Automation Umbrella Chart
+# kube4ha - Home Automation Umbrella Chart
 # This chart deploys Home Assistant, Zigbee2MQTT, Mosquitto MQTT broker, and Cloudflared tunnel
 #
 # Prerequisites:

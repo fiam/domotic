@@ -1,6 +1,6 @@
 # Home deployment
 
-This private repository contains the configuration for one Domotic
+This private repository contains the configuration for one kube4ha
 installation. The public source is downloaded at the commit recorded in
 `Taskfile.yml`.
 
@@ -45,7 +45,7 @@ For a native restore, run `task restore:plan` and `task restore`, upload the
 backup in Home Assistant, then run `task restore:complete`. Use
 `task credentials:update` after changing the owner password in Home Assistant.
 
-Use `task domotic:update REF=main` to update the public source pin and
+Use `task kube4ha:update REF=main` to update the public source pin and
 `task homeassistant:update` to deploy the Home Assistant version verified by
 that revision.
 

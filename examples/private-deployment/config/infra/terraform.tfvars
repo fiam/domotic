@@ -1,7 +1,7 @@
 cloudflare_domain = "example.com"
 
 cloudflare_homeassistant_subdomain = "homeassistant"
-cloudflare_tunnel_name              = "domotic-tunnel"
+cloudflare_tunnel_name              = "kube4ha-tunnel"
 
 local_http_hostnames = {
   homeassistant = "homeassistant.local"
@@ -24,8 +24,8 @@ homeassistant_bootstrap_mode = "seed"
 
 # homeassistant_r2_backup_prefix = "home-assistant"
 
-kubernetes_namespace = "domotic"
-helm_release_name     = "domotic"
+kubernetes_namespace = "kube4ha"
+helm_release_name     = "kube4ha"
 
 zigbee_pan_id         = 6754
 zigbee_channel        = 15

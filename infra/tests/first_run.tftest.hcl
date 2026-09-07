@@ -42,7 +42,7 @@ run "empty_namespace_first_apply" {
   variables {
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
-    kubernetes_namespace  = "domotic-test"
+    kubernetes_namespace  = "kube4ha-test"
     local_http_urls = {
       homeassistant = "http://homeassistant.local:8080"
       zigbee2mqtt   = "http://zigbee2mqtt.local:8080"
@@ -124,7 +124,7 @@ run "empty_namespace_first_apply" {
     condition = (
       yamldecode(output.helm_values_yaml).homeassistant.zigbee2mqttBackup.enabled &&
       yamldecode(output.helm_values_yaml).homeassistant.zigbee2mqttBackup.mqtt.server ==
-      "domotic-mosquitto.domotic-test.svc.cluster.local"
+      "kube4ha-mosquitto.kube4ha-test.svc.cluster.local"
     )
     error_message = "OpenTofu must enable Zigbee2MQTT snapshots through the in-cluster MQTT service."
   }
@@ -136,7 +136,7 @@ run "seed_generates_an_admin_password" {
   variables {
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
-    kubernetes_namespace  = "domotic-test"
+    kubernetes_namespace  = "kube4ha-test"
   }
 
   assert {
@@ -151,7 +151,7 @@ run "restored_identity_must_match_radio_settings" {
   variables {
     cloudflare_account_id   = "00000000000000000000000000000000"
     cloudflare_domain       = "example.com"
-    kubernetes_namespace    = "domotic-test"
+    kubernetes_namespace    = "kube4ha-test"
     zigbee_network_key      = "0123456789ABCDEF0123456789ABCDEF"
     zigbee_ext_pan_id       = "0123456789ABCDEF"
     zigbee_pan_id           = 6754
@@ -171,7 +171,7 @@ run "homeassistant_owner_seed_uses_a_secret" {
   variables {
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
-    kubernetes_namespace  = "domotic-test"
+    kubernetes_namespace  = "kube4ha-test"
     homeassistant_owner = {
       name     = "Home Administrator"
       language = "en"
@@ -196,9 +196,9 @@ run "native_restore_disables_owner_seed" {
   variables {
     cloudflare_account_id        = "00000000000000000000000000000000"
     cloudflare_domain            = "example.com"
-    kubernetes_namespace         = "domotic-test"
+    kubernetes_namespace         = "kube4ha-test"
     homeassistant_bootstrap_mode = "restore"
-    r2_backup_bucket_name        = "domotic-test-backups"
+    r2_backup_bucket_name        = "kube4ha-test-backups"
     r2_backup_credentials = {
       access_key_id     = "backup-id"
       secret_access_key = "backup-secret"
@@ -223,7 +223,7 @@ run "remote_custom_components_reach_helm_values" {
   variables {
     cloudflare_account_id = "00000000000000000000000000000000"
     cloudflare_domain     = "example.com"
-    kubernetes_namespace  = "domotic-test"
+    kubernetes_namespace  = "kube4ha-test"
     homeassistant_remote_custom_components = [{
       name         = "example_integration"
       url          = "https://example.invalid/fixture.tar.gz"
@@ -240,4 +240,36 @@ run "remote_custom_components_reach_helm_values" {
     )
     error_message = "OpenTofu must pass validated remote custom-component metadata to Helm."
   }
+}
+
+run "legacy_protected_fields_still_block_changes" {
+  command = plan
+
+  variables {
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "kube4ha-test"
+    zigbee_pan_id         = 6754
+  }
+
+  override_data {
+    target = data.kubernetes_resources.zigbee_network_existing
+    values = {
+      objects = [{
+        metadata = {
+          annotations = {
+            "domotic.fiam.github.com/protected" = "true"
+          }
+        }
+        data = {
+          pan_id  = "1111"
+          channel = "15"
+        }
+      }]
+    }
+  }
+
+  expect_failures = [
+    terraform_data.zigbee_protection_check,
+  ]
 }

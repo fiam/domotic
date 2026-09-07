@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/legacy-environment.sh"
+
 fail() {
   printf 'error: %s\n' "$*" >&2
   exit 1
@@ -16,9 +18,9 @@ old_passphrase="${TF_VAR_state_passphrase:-}"
 [[ -n "$old_passphrase" ]] || fail "the current recovery passphrase was not provided"
 [[ -f "$bootstrap_state_file" ]] || fail "bootstrap state is missing: $bootstrap_state_file"
 
-new_passphrase="${DOMOTIC_NEW_RECOVERY_PASSPHRASE:-}"
+new_passphrase="${KUBE4HA_NEW_RECOVERY_PASSPHRASE:-}"
 if [[ -z "$new_passphrase" ]]; then
-  [[ -r /dev/tty ]] || fail "set DOMOTIC_NEW_RECOVERY_PASSPHRASE in a non-interactive session"
+  [[ -r /dev/tty ]] || fail "set KUBE4HA_NEW_RECOVERY_PASSPHRASE in a non-interactive session"
   IFS= read -r -s -p 'New recovery passphrase: ' new_passphrase </dev/tty
   printf '\n' >/dev/tty
   IFS= read -r -s -p 'Confirm new recovery passphrase: ' confirmation </dev/tty
@@ -29,16 +31,16 @@ fi
 (( ${#new_passphrase} >= 16 )) || fail "the new recovery passphrase must contain at least 16 characters"
 [[ "$new_passphrase" != "$old_passphrase" ]] || fail "the new recovery passphrase must differ from the current one"
 
-bootstrap_vars_file="${DOMOTIC_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
+bootstrap_vars_file="${KUBE4HA_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
 tofu_vars_file="${TF_VARS_FILE:-$config_dir/infra/terraform.tfvars}"
 [[ -f "$bootstrap_vars_file" ]] || fail "missing bootstrap variables: $bootstrap_vars_file"
 [[ -f "$tofu_vars_file" ]] || fail "missing OpenTofu variables: $tofu_vars_file"
 
-for variable in DOMOTIC_R2_ENDPOINT DOMOTIC_STATE_BUCKET DOMOTIC_STATE_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_API_TOKEN; do
+for variable in KUBE4HA_R2_ENDPOINT KUBE4HA_STATE_BUCKET KUBE4HA_STATE_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY CLOUDFLARE_API_TOKEN; do
   [[ -n "${!variable:-}" ]] || fail "runtime environment is missing $variable"
 done
 
-temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-passphrase-rollover.XXXXXX")"
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/kube4ha-passphrase-rollover.XXXXXX")"
 cleanup() {
   rm -rf -- "$temp_root"
 }
@@ -65,10 +67,10 @@ init_main_backend() {
   local data_dir="$2"
   TF_DATA_DIR="$data_dir" tofu -chdir="$infra_dir" init \
     -input=false -reconfigure \
-    -backend-config="bucket=${DOMOTIC_STATE_BUCKET}" \
-    -backend-config="key=${DOMOTIC_STATE_KEY}" \
+    -backend-config="bucket=${KUBE4HA_STATE_BUCKET}" \
+    -backend-config="key=${KUBE4HA_STATE_KEY}" \
     -backend-config="region=auto" \
-    -backend-config="endpoints={s3=\"${DOMOTIC_R2_ENDPOINT}\"}" \
+    -backend-config="endpoints={s3=\"${KUBE4HA_R2_ENDPOINT}\"}" \
     -backend-config="skip_credentials_validation=true" \
     -backend-config="skip_metadata_api_check=true" \
     -backend-config="skip_region_validation=true" \

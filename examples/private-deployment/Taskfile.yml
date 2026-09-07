@@ -3,14 +3,14 @@ version: '3'
 vars:
   # Upgrade by changing this one reviewed commit SHA, then run task check,
   # task plan, and task deploy in that order.
-  DOMOTIC_REF: REPLACE_WITH_FULL_COMMIT_SHA
+  KUBE4HA_REF: REPLACE_WITH_FULL_COMMIT_SHA
 
 includes:
-  domotic:
+  kube4ha:
     # Task's Git downloader treats ref as a branch or tag when performing a
     # shallow clone. Fetch the entrypoint by immutable commit URL instead; the
-    # entrypoint then checks out the same commit into .domotic/source.
-    taskfile: 'https://raw.githubusercontent.com/fiam/domotic/{{.DOMOTIC_REF}}/Taskfile.remote.yml'
+    # entrypoint then checks out the same commit into .kube4ha/source.
+    taskfile: 'https://raw.githubusercontent.com/fiam/kube4ha/{{.KUBE4HA_REF}}/Taskfile.remote.yml'
     flatten: true
     vars:
-      DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'
+      KUBE4HA_PINNED_REF: '{{.KUBE4HA_REF}}'

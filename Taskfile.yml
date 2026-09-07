@@ -5,36 +5,36 @@ includes:
     taskfile: ./bootstrap
     dir: ./bootstrap
     vars:
-      DOMOTIC_BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
-      DOMOTIC_BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
+      KUBE4HA_BOOTSTRAP_VARS_FILE: '{{.ROOT_BOOTSTRAP_VARS_PATH}}'
+      KUBE4HA_BOOTSTRAP_STATE_FILE: '{{.ROOT_BOOTSTRAP_STATE_PATH}}'
   infra:
     taskfile: ./infra
     dir: ./infra
     vars:
-      DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-      DOMOTIC_TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
-      DOMOTIC_GENERATED_HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
-      DOMOTIC_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
+      KUBE4HA_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
+      KUBE4HA_TF_VARS_FILE: '{{.ROOT_TOFU_VARS_PATH}}'
+      KUBE4HA_GENERATED_HELM_VALUES_FILE: '{{.ROOT_GENERATED_HELM_VALUES_PATH}}'
+      KUBE4HA_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   helm:
-    taskfile: ./charts/domotic
-    dir: ./charts/domotic
+    taskfile: ./charts/kube4ha
+    dir: ./charts/kube4ha
     vars:
-      DOMOTIC_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
-      DOMOTIC_GENERATED_HELM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
-      DOMOTIC_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
+      KUBE4HA_CONFIG_DIR: '{{.ROOT_CONFIG_DIR}}'
+      KUBE4HA_GENERATED_HELM_VALUES_FILE: '{{.ROOT_TOFU_HELM_VALUES_PATH}}'
+      KUBE4HA_PRIVATE_HELM_VALUES_FILE: '{{.ROOT_PRIVATE_HELM_VALUES_PATH}}'
   dev:
     taskfile: ./dev
     dir: ./dev
 
 vars:
-  ROOT_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default .ROOT_DIR}}'
+  ROOT_REQUESTED_CONFIG_DIR: '{{.KUBE4HA_CONFIG_DIR | default .DOMOTIC_CONFIG_DIR | default .ROOT_DIR}}'
   ROOT_CONFIG_DIR: '{{if isAbs (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{.ROOT_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .ROOT_REQUESTED_CONFIG_DIR)}}{{end}}'
-  ROOT_BOOTSTRAP_VARS_PATH: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
-  ROOT_BOOTSTRAP_STATE_PATH: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_DIR)}}'
-  ROOT_TOFU_VARS_PATH: '{{.DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
-  ROOT_GENERATED_HELM_VALUES_PATH: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
-  ROOT_TOFU_HELM_VALUES_PATH: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
-  ROOT_PRIVATE_HELM_VALUES_PATH: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_BOOTSTRAP_VARS_PATH: '{{.KUBE4HA_BOOTSTRAP_VARS_FILE | default .DOMOTIC_BOOTSTRAP_VARS_FILE | default (printf "%s/bootstrap.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_BOOTSTRAP_STATE_PATH: '{{.KUBE4HA_BOOTSTRAP_STATE_FILE | default .DOMOTIC_BOOTSTRAP_STATE_FILE | default (printf "%s/state/bootstrap.tfstate" .ROOT_DIR)}}'
+  ROOT_TOFU_VARS_PATH: '{{.KUBE4HA_TF_VARS_FILE | default .DOMOTIC_TF_VARS_FILE | default (printf "%s/infra/terraform.tfvars" .ROOT_CONFIG_DIR)}}'
+  ROOT_GENERATED_HELM_VALUES_PATH: '{{.KUBE4HA_GENERATED_HELM_VALUES_FILE | default .DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .ROOT_CONFIG_DIR)}}'
+  ROOT_TOFU_HELM_VALUES_PATH: '{{.KUBE4HA_GENERATED_HELM_VALUES_FILE | default .DOMOTIC_GENERATED_HELM_VALUES_FILE | default .ROOT_GENERATED_HELM_VALUES_PATH}}'
+  ROOT_PRIVATE_HELM_VALUES_PATH: '{{.KUBE4HA_PRIVATE_HELM_VALUES_FILE | default .DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .ROOT_CONFIG_DIR)}}'
   ROOT_DEV_CLUSTER_NAME: '{{.CLUSTER_NAME | default "ha"}}'
 
 tasks:
@@ -57,6 +57,7 @@ tasks:
       - bash -n scripts/*.sh scripts/tests/*.sh
       - bash scripts/tests/private-deployment.sh
       - bash scripts/tests/dev-sync-custom-integrations.sh
+      - bash scripts/tests/project-rename.sh
 
   config:check:
     desc: Validate a private deployment configuration and its Git boundaries
@@ -132,14 +133,14 @@ tasks:
         ./scripts/with-opentofu-environment.sh
         bootstrap "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         env
-        DOMOTIC_BOOTSTRAP_VARS_FILE="{{.ROOT_BOOTSTRAP_VARS_PATH}}"
-        DOMOTIC_BOOTSTRAP_STATE_FILE="{{.ROOT_BOOTSTRAP_STATE_PATH}}"
+        KUBE4HA_BOOTSTRAP_VARS_FILE="{{.ROOT_BOOTSTRAP_VARS_PATH}}"
+        KUBE4HA_BOOTSTRAP_STATE_FILE="{{.ROOT_BOOTSTRAP_STATE_PATH}}"
         task --dir "{{.ROOT_DIR}}" bootstrap:apply
 
   deploy-dev:
     desc: Create Kind and deploy the complete development stack
     vars:
-      DEV_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.KUBE4HA_TF_VARS_FILE | default .DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - task: dev:create
@@ -155,11 +156,11 @@ tasks:
           exit 1
         }
       - >-
-        DOMOTIC_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
+        KUBE4HA_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
         task --dir "{{.ROOT_DIR}}" _deploy-dev
 
   _deploy-dev:
@@ -185,13 +186,13 @@ tasks:
         env \
           RELEASE_NAME="$release_name" \
           NAMESPACE="$namespace" \
-          DOMOTIC_PRIVATE_HELM_VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml" \
+          KUBE4HA_PRIVATE_HELM_VALUES_FILE="{{.ROOT_DIR}}/examples/values-kind.yaml" \
           task --dir "{{.ROOT_DIR}}" helm:deploy
 
   destroy-dev:
     desc: Remove the development deployment, infrastructure, and Kind cluster
     vars:
-      DEV_TF_VARS_FILE: '{{.DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
+      DEV_TF_VARS_FILE: '{{.KUBE4HA_TF_VARS_FILE | default .DOMOTIC_TF_VARS_FILE | default .ROOT_TOFU_VARS_PATH}}'
       DEV_RESOLVED_TF_VARS_FILE: '{{if isAbs (toString .DEV_TF_VARS_FILE)}}{{.DEV_TF_VARS_FILE}}{{else}}{{joinPath .USER_WORKING_DIR (toString .DEV_TF_VARS_FILE)}}{{end}}'
     cmds:
       - |
@@ -203,11 +204,11 @@ tasks:
           exit 1
         }
       - >-
-        DOMOTIC_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
+        KUBE4HA_TF_VARS_FILE="{{.DEV_RESOLVED_TF_VARS_FILE}}"
         ./scripts/with-opentofu-environment.sh
         runtime "{{.ROOT_DIR}}" "{{.ROOT_DIR}}" "{{.ROOT_CONFIG_DIR}}" --
         env
-        DOMOTIC_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
+        KUBE4HA_CONFIG_DIR="{{.ROOT_CONFIG_DIR}}"
         task --dir "{{.ROOT_DIR}}" _destroy-dev
       - task: dev:destroy
         vars:

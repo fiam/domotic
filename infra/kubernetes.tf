@@ -1,4 +1,9 @@
-resource "kubernetes_namespace" "domotic" {
+moved {
+  from = kubernetes_namespace.domotic
+  to   = kubernetes_namespace.kube4ha
+}
+
+resource "kubernetes_namespace" "kube4ha" {
   metadata {
     name = var.kubernetes_namespace
 
@@ -10,7 +15,7 @@ resource "kubernetes_namespace" "domotic" {
 }
 
 resource "kubernetes_secret" "cloudflared_tunnel_token_secret" {
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
   metadata {
     name      = "cloudflared-tunnel-token"
     namespace = var.kubernetes_namespace
@@ -21,7 +26,7 @@ resource "kubernetes_secret" "cloudflared_tunnel_token_secret" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/component" = "cloudflared-tunnel"
+      "kube4ha.fiam.github.com/component" = "cloudflared-tunnel"
     }
   }
 
@@ -60,7 +65,7 @@ resource "terraform_data" "homeassistant_credentials" {
 resource "kubernetes_secret" "homeassistant_onboarding" {
   count = var.homeassistant_bootstrap_mode == "seed" ? 1 : 0
 
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
 
   metadata {
     name      = "homeassistant-onboarding"

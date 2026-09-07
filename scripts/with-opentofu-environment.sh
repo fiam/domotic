@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/legacy-environment.sh"
+
 fail() {
   printf 'error: %s\n' "$*" >&2
   exit 1
@@ -42,16 +44,20 @@ case "$mode" in
   *) usage ;;
 esac
 
-bootstrap_vars_file="${DOMOTIC_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
-bootstrap_state_file="${DOMOTIC_BOOTSTRAP_STATE_FILE:-$private_root/state/bootstrap.tfstate}"
-bootstrap_data_dir="${BOOTSTRAP_TF_DATA_DIR:-$private_root/.domotic/tofu/bootstrap}"
-main_data_dir="${MAIN_TF_DATA_DIR:-$private_root/.domotic/tofu/main}"
+bootstrap_vars_file="${KUBE4HA_BOOTSTRAP_VARS_FILE:-$config_dir/bootstrap.tfvars}"
+bootstrap_state_file="${KUBE4HA_BOOTSTRAP_STATE_FILE:-$private_root/state/bootstrap.tfstate}"
+cache_root="$private_root/.kube4ha"
+if [[ -d "$private_root/.domotic" && ! -e "$cache_root" ]]; then
+  cache_root="$private_root/.domotic"
+fi
+bootstrap_data_dir="${BOOTSTRAP_TF_DATA_DIR:-$cache_root/tofu/bootstrap}"
+main_data_dir="${MAIN_TF_DATA_DIR:-$cache_root/tofu/main}"
 
 [[ -d "$source_root/bootstrap" ]] || fail "missing bootstrap OpenTofu root: $source_root/bootstrap"
 [[ -f "$bootstrap_vars_file" ]] || fail "missing bootstrap configuration: $bootstrap_vars_file"
 [[ ! -L "$bootstrap_state_file" ]] || fail "refusing a symlinked bootstrap state: $bootstrap_state_file"
 
-recovery_passphrase="${DOMOTIC_RECOVERY_PASSPHRASE:-}"
+recovery_passphrase="${KUBE4HA_RECOVERY_PASSPHRASE:-}"
 if [[ -z "$recovery_passphrase" ]]; then
   recovery_passphrase="$(read_hidden 'Recovery passphrase')"
   if [[ ! -f "$bootstrap_state_file" ]]; then
@@ -94,12 +100,16 @@ read_bootstrap_runtime() {
 
 if [[ "$mode" == "bootstrap" || "$mode" == "rotate-cloudflare-token" ]]; then
   cloudflare_api_token="${CLOUDFLARE_API_TOKEN:-}"
+  if [[ -f "$bootstrap_state_file" ]]; then
+    bootstrap_runtime="$(read_bootstrap_runtime)"
+    # Bootstrap re-applies must keep addressing the installation's existing
+    # encrypted main state, including foundations created before the rename.
+    export TF_VAR_state_object_key="$(jq -er '.state.key' <<<"$bootstrap_runtime")"
+    cloudflare_api_token="${cloudflare_api_token:-$(jq -er '.cloudflare_api_token' <<<"$bootstrap_runtime")}"
+    unset bootstrap_runtime
+  fi
   if [[ "$mode" == "rotate-cloudflare-token" ]]; then
     cloudflare_api_token="$(read_hidden 'New Cloudflare account API token')"
-  elif [[ -z "$cloudflare_api_token" && -f "$bootstrap_state_file" ]]; then
-    bootstrap_runtime="$(read_bootstrap_runtime)"
-    cloudflare_api_token="$(jq -er '.cloudflare_api_token' <<<"$bootstrap_runtime")"
-    unset bootstrap_runtime
   elif [[ -z "$cloudflare_api_token" ]]; then
     cloudflare_api_token="$(read_hidden 'Cloudflare account API token')"
   fi
@@ -115,10 +125,11 @@ fi
 bootstrap_runtime="$(read_bootstrap_runtime)"
 export CLOUDFLARE_API_TOKEN="$(jq -er '.cloudflare_api_token' <<<"$bootstrap_runtime")"
 export TF_VAR_cloudflare_account_id="$(jq -er '.cloudflare_account_id' <<<"$bootstrap_runtime")"
-export DOMOTIC_R2_ENDPOINT="$(jq -er '.endpoint' <<<"$bootstrap_runtime")"
-export TF_VAR_r2_endpoint="$DOMOTIC_R2_ENDPOINT"
-export DOMOTIC_STATE_BUCKET="$(jq -er '.state.bucket' <<<"$bootstrap_runtime")"
-export DOMOTIC_STATE_KEY="$(jq -er '.state.key' <<<"$bootstrap_runtime")"
+export KUBE4HA_R2_ENDPOINT="$(jq -er '.endpoint' <<<"$bootstrap_runtime")"
+export TF_VAR_r2_endpoint="$KUBE4HA_R2_ENDPOINT"
+export KUBE4HA_STATE_BUCKET="$(jq -er '.state.bucket' <<<"$bootstrap_runtime")"
+export KUBE4HA_STATE_KEY="$(jq -er '.state.key' <<<"$bootstrap_runtime")"
+export TF_VAR_state_object_key="$KUBE4HA_STATE_KEY"
 export AWS_ACCESS_KEY_ID="$(jq -er '.state.access_key_id' <<<"$bootstrap_runtime")"
 export AWS_SECRET_ACCESS_KEY="$(jq -er '.state.secret_access_key' <<<"$bootstrap_runtime")"
 export TF_VAR_r2_backup_bucket_name="$(jq -er '.backups.bucket' <<<"$bootstrap_runtime")"

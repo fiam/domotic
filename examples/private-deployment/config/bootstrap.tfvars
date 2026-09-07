@@ -1,6 +1,6 @@
 cloudflare_account_id = "0123456789abcdef0123456789abcdef"
 
-# This prefix must be unique for every Domotic installation in the Cloudflare
+# This prefix must be unique for every kube4ha installation in the Cloudflare
 # account. It creates <prefix>-state and <prefix>-backups.
 r2_bucket_prefix = "my-home"
 

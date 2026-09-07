@@ -1,5 +1,5 @@
 # ==============================================================================
-# Domotic Infrastructure Configuration
+# kube4ha Infrastructure Configuration
 # ==============================================================================
 # Copy this file to terraform.tfvars and fill in your values
 
@@ -17,7 +17,7 @@ cloudflare_domain = "example.com"
 cloudflare_homeassistant_subdomain = "homeassistant"
 
 # Friendly name for the tunnel
-cloudflare_tunnel_name = "domotic-tunnel"
+cloudflare_tunnel_name = "kube4ha-tunnel"
 
 # Hostnames matched by the two local Gateway API HTTPRoutes. On k3s, advertise
 # these with Avahi. For Kind, add them to the development machine's /etc/hosts.
@@ -86,10 +86,10 @@ homeassistant_bootstrap_mode = "seed" # or "restore"
 # ==============================================================================
 
 # Namespace where Helm charts will be deployed
-kubernetes_namespace = "domotic"
+kubernetes_namespace = "kube4ha"
 
 # Helm release name (affects service DNS names)
-helm_release_name = "domotic"
+helm_release_name = "kube4ha"
 
 # ==============================================================================
 # Zigbee Configuration

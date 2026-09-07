@@ -7,9 +7,9 @@ output "zigbee_secret_status" {
   value = {
     name         = kubernetes_secret.zigbee_keys.metadata[0].name
     namespace    = kubernetes_secret.zigbee_keys.metadata[0].namespace
-    protected    = kubernetes_secret.zigbee_keys.metadata[0].annotations["domotic.fiam.github.com/protected"]
-    created_at   = kubernetes_secret.zigbee_keys.metadata[0].annotations["domotic.fiam.github.com/created.at"]
-    last_updated = kubernetes_secret.zigbee_keys.metadata[0].annotations["domotic.fiam.github.com/last.updated"]
+    protected    = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/protected"]
+    created_at   = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
+    last_updated = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
   }
 }
 
@@ -18,9 +18,9 @@ output "zigbee_configmap_status" {
   value = {
     name         = kubernetes_config_map.zigbee_network.metadata[0].name
     namespace    = kubernetes_config_map.zigbee_network.metadata[0].namespace
-    protected    = kubernetes_config_map.zigbee_network.metadata[0].annotations["domotic.fiam.github.com/protected"]
-    created_at   = kubernetes_config_map.zigbee_network.metadata[0].annotations["domotic.fiam.github.com/created.at"]
-    last_updated = kubernetes_config_map.zigbee_network.metadata[0].annotations["domotic.fiam.github.com/last.updated"]
+    protected    = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/protected"]
+    created_at   = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
+    last_updated = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
   }
 }
 
@@ -30,12 +30,12 @@ output "cloudflare_tunnel_hostname" {
 }
 
 output "kubernetes_namespace" {
-  description = "Namespace containing the Domotic application resources"
+  description = "Namespace containing the kube4ha application resources"
   value       = var.kubernetes_namespace
 }
 
 output "helm_release_name" {
-  description = "Helm release name for the Domotic application"
+  description = "Helm release name for the kube4ha application"
   value       = var.helm_release_name
 }
 

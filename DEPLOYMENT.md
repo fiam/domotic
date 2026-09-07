@@ -1,17 +1,17 @@
 # Install on a single-node k3s server
 
 This is the documented reference setup for a common home-server environment.
-Domotic itself supports any Kubernetes distribution that ships Gateway API;
+kube4ha itself supports any Kubernetes distribution that ships Gateway API;
 use this guide only when choosing k3s.
 
-This guide prepares a new Debian or Ubuntu server for Domotic. It installs
+This guide prepares a new Debian or Ubuntu server for kube4ha. It installs
 k3s, enables Traefik's Kubernetes Gateway API provider, configures remote
 cluster access, and advertises the application hostnames on the local network
 with multicast DNS (mDNS).
 
 The examples use:
 
-- Server hostname: `domotic-server`
+- Server hostname: `kube4ha-server`
 - Home Assistant: `http://homeassistant.local`
 - Zigbee2MQTT: `http://zigbee2mqtt.local`
 
@@ -29,13 +29,13 @@ if other systems need to connect to the server by address.
 Set a stable hostname and inspect the LAN interface and address:
 
 ```sh
-sudo hostnamectl set-hostname domotic-server
+sudo hostnamectl set-hostname kube4ha-server
 ip -br address
 ip route show default
 ```
 
 Install Avahi before k3s so that the server itself is reachable as
-`domotic-server.local`:
+`kube4ha-server.local`:
 
 ```sh
 sudo apt-get update
@@ -47,7 +47,7 @@ systemctl is-active avahi-daemon
 From another mDNS-capable machine on the same LAN, verify the primary name:
 
 ```sh
-ping domotic-server.local
+ping kube4ha-server.local
 ```
 
 Linux clients may also need `libnss-mdns`; macOS and iOS include mDNS support.
@@ -178,15 +178,15 @@ trusted administrator machine and keep it private. After initializing the
 private deployment repository in
 [the README](README.md#install), run this from
 that repository to merge the server configuration into your kubeconfig under
-the distinct name `domotic`:
+the distinct name `kube4ha`:
 
 ```sh
 task k3s:context \
   SSH_USER=your-server-user \
-  SSH_HOST=domotic-server.local
+  SSH_HOST=kube4ha-server.local
 
 kubectl config get-contexts
-kubectl config use-context domotic
+kubectl config use-context kube4ha
 kubectl get nodes
 ```
 
@@ -195,7 +195,7 @@ task materializes the pinned public source and the import script allocates a
 terminal so `sudo` can request that account's password. It
 backs up an existing configuration, avoids collisions with k3s's generic
 `default` names, and preserves the current context until you explicitly switch
-to `domotic`. Deployment tasks use the current context. The merged kubeconfig
+to `kube4ha`. Deployment tasks use the current context. The merged kubeconfig
 contains embedded client certificates. Run the script again after k3s rotates
 or renews them. The helper writes to `KUBECONFIG` when it names one file and
 otherwise uses `~/.kube/config`; deployment commands support the normal
@@ -397,8 +397,8 @@ with `task zigbee:import SOURCE=/path/to/zigbee-keys.tfvars.json`.
 Verify that Traefik accepted the routes:
 
 ```sh
-kubectl -n domotic get httproute
-kubectl -n domotic describe httproute
+kubectl -n kube4ha get httproute
+kubectl -n kube4ha describe httproute
 curl --fail --show-error --head http://homeassistant.local
 curl --fail --show-error --head http://zigbee2mqtt.local
 ```

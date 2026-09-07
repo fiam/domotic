@@ -51,6 +51,7 @@ run "installation_prefix_isolates_buckets_and_tokens" {
   assert {
     condition = (
       output.runtime.state.bucket == "house-one-state" &&
+      output.runtime.state.key == "kube4ha.tfstate" &&
       output.runtime.backups.bucket == "house-one-backups" &&
       output.runtime.endpoint == "https://00000000000000000000000000000000.eu.r2.cloudflarestorage.com" &&
       output.runtime.state.secret_access_key == sha256("mock-token-value")
@@ -74,6 +75,22 @@ run "another_installation_gets_different_bucket_names" {
       local.backup_bucket_name == "house-two-backups"
     )
     error_message = "A second installation prefix must produce a separate bucket pair."
+  }
+}
+
+run "legacy_state_object_key_is_preserved" {
+  command = plan
+
+  variables {
+    cloudflare_api_token  = "mock-account-api-token"
+    cloudflare_account_id = "00000000000000000000000000000000"
+    r2_bucket_prefix      = "house-one"
+    state_object_key      = "domotic.tfstate"
+  }
+
+  assert {
+    condition     = output.runtime.state.key == "domotic.tfstate"
+    error_message = "An existing installation must keep its encrypted state object key."
   }
 }
 

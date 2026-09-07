@@ -1,6 +1,7 @@
 .DS_Store
 
 # Materialized, commit-pinned public source.
+/.kube4ha/
 /.domotic/
 /.task/
 

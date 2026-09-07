@@ -47,7 +47,12 @@ resource "cloudflare_r2_bucket" "backups" {
 
 resource "cloudflare_account_token" "state" {
   account_id = var.cloudflare_account_id
-  name       = "domotic-${var.r2_bucket_prefix}-state"
+  name       = "kube4ha-${var.r2_bucket_prefix}-state"
+
+  lifecycle {
+    # Rebranding an existing foundation must not replace its scoped token.
+    ignore_changes = [name]
+  }
 
   policies = [{
     effect = "allow"
@@ -62,7 +67,11 @@ resource "cloudflare_account_token" "state" {
 
 resource "cloudflare_account_token" "backups" {
   account_id = var.cloudflare_account_id
-  name       = "domotic-${var.r2_bucket_prefix}-backups"
+  name       = "kube4ha-${var.r2_bucket_prefix}-backups"
+
+  lifecycle {
+    ignore_changes = [name]
+  }
 
   policies = [{
     effect = "allow"

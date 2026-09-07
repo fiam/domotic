@@ -4,11 +4,11 @@ set -euo pipefail
 
 usage() {
   echo "Usage: $0 [--user SSH_USER] [--context NAME] <server-hostname>" >&2
-  echo "Example: $0 --user admin --context domotic automation-host.local" >&2
+  echo "Example: $0 --user admin --context kube4ha automation-host.local" >&2
 }
 
 ssh_username=""
-context_name=domotic
+context_name=kube4ha
 context_option_set=false
 positional_arguments=()
 
@@ -104,7 +104,7 @@ done
 
 install -d -m 0700 "$(dirname "$target_config")"
 
-kube_merge_dir="$(mktemp -d "${TMPDIR:-/tmp}/domotic-kubeconfig.XXXXXX")"
+kube_merge_dir="$(mktemp -d "${TMPDIR:-/tmp}/kube4ha-kubeconfig.XXXXXX")"
 remote_merge_dir=""
 
 cleanup_remote_config() {
@@ -127,9 +127,9 @@ import_config="$kube_merge_dir/$context_name.yaml"
 merged_config="$kube_merge_dir/merged.yaml"
 
 remote_merge_dir="$(
-  ssh "$ssh_target" 'mktemp -d /tmp/domotic-kubeconfig.XXXXXX'
+  ssh "$ssh_target" 'mktemp -d /tmp/kube4ha-kubeconfig.XXXXXX'
 )"
-if [[ ! "$remote_merge_dir" =~ ^/tmp/domotic-kubeconfig\.[A-Za-z0-9]+$ ]]; then
+if [[ ! "$remote_merge_dir" =~ ^/tmp/kube4ha-kubeconfig\.[A-Za-z0-9]+$ ]]; then
   echo "Unexpected temporary directory returned by $server_host" >&2
   exit 1
 fi

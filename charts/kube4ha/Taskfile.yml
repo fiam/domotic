@@ -1,13 +1,13 @@
 version: '3'
 
 vars:
-  HELM_REQUESTED_CONFIG_DIR: '{{.DOMOTIC_CONFIG_DIR | default (printf "%s/../.." .ROOT_DIR)}}'
+  HELM_REQUESTED_CONFIG_DIR: '{{.KUBE4HA_CONFIG_DIR | default .DOMOTIC_CONFIG_DIR | default (printf "%s/../.." .ROOT_DIR)}}'
   HELM_CONFIG_DIR: '{{if isAbs (toString .HELM_REQUESTED_CONFIG_DIR)}}{{.HELM_REQUESTED_CONFIG_DIR}}{{else}}{{joinPath .USER_WORKING_DIR (toString .HELM_REQUESTED_CONFIG_DIR)}}{{end}}'
-  HELM_RELEASE_NAME: '{{.RELEASE_NAME | default "domotic"}}'
-  HELM_NAMESPACE: '{{.NAMESPACE | default "domotic"}}'
+  HELM_RELEASE_NAME: '{{.RELEASE_NAME | default "kube4ha"}}'
+  HELM_NAMESPACE: '{{.NAMESPACE | default "kube4ha"}}'
   HELM_KUBE_CONTEXT: '{{.KUBE_CONTEXT | default ""}}'
-  HELM_TERRAFORM_VALUES_FILE: '{{.DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .HELM_CONFIG_DIR)}}'
-  HELM_VALUES_FILE: '{{.DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_TERRAFORM_VALUES_FILE: '{{.KUBE4HA_GENERATED_HELM_VALUES_FILE | default .DOMOTIC_GENERATED_HELM_VALUES_FILE | default (printf "%s/infra/helm-values.yaml" .HELM_CONFIG_DIR)}}'
+  HELM_VALUES_FILE: '{{.KUBE4HA_PRIVATE_HELM_VALUES_FILE | default .DOMOTIC_PRIVATE_HELM_VALUES_FILE | default (printf "%s/values.yaml" .HELM_CONFIG_DIR)}}'
   HELM_RESOLVED_TIMEOUT: '{{.HELM_TIMEOUT | default "10m"}}'
 
 tasks:
@@ -17,7 +17,7 @@ tasks:
       - task --list
 
   deploy:
-    desc: Install or upgrade the Domotic release
+    desc: Install or upgrade the kube4ha release
     preconditions:
       - sh: command -v helm >/dev/null
         msg: Install Helm before running chart tasks.
@@ -38,7 +38,7 @@ tasks:
         --timeout "{{.HELM_RESOLVED_TIMEOUT}}"
 
   uninstall:
-    desc: Uninstall the Domotic release
+    desc: Uninstall the kube4ha release
     cmds:
       - >-
         helm uninstall "{{.HELM_RELEASE_NAME}}"
@@ -238,21 +238,21 @@ tasks:
           --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.zigbee2mqttBackup.enabled=true \
-          --set homeassistant.zigbee2mqttBackup.mqtt.server=domotic-mosquitto)"
+          --set homeassistant.zigbee2mqttBackup.mqtt.server=kube4ha-mosquitto)"
         printf '%s\n' "$backup_render" | grep -Fq 'kind: CronJob'
         printf '%s\n' "$backup_render" | grep -Fq 'concurrencyPolicy: Forbid'
         printf '%s\n' "$backup_render" | grep -Fq 'requiredDuringSchedulingIgnoredDuringExecution:'
         printf '%s\n' "$backup_render" | grep -Fq 'topologyKey: kubernetes.io/hostname'
         printf '%s\n' "$backup_render" | grep -Fq 'app.kubernetes.io/component: server'
-        printf '%s\n' "$backup_render" | grep -Fq 'claimName: domotic-homeassistant-pvc'
+        printf '%s\n' "$backup_render" | grep -Fq 'claimName: kube4ha-homeassistant-pvc'
         printf '%s\n' "$backup_render" | grep -Fq 'mosquitto_rr "$@"'
         printf '%s\n' "$backup_render" | grep -Fq 'unzip -t "$archive_file"'
-        printf '%s\n' "$backup_render" | grep -Fq 'value: "domotic-mosquitto"'
+        printf '%s\n' "$backup_render" | grep -Fq 'value: "kube4ha-mosquitto"'
         if helm template "{{.HELM_RELEASE_NAME}}" . \
           --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \
           --set homeassistant.zigbee2mqttBackup.enabled=true \
-          --set homeassistant.zigbee2mqttBackup.mqtt.server=domotic-mosquitto \
+          --set homeassistant.zigbee2mqttBackup.mqtt.server=kube4ha-mosquitto \
           --set homeassistant.zigbee2mqttBackup.directory=../outside \
           >/dev/null 2>&1; then
           echo 'unsafe Zigbee2MQTT backup directories must fail rendering' >&2
@@ -265,13 +265,13 @@ tasks:
           --set homeassistant.onboarding.enabled=true \
           --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
           --set homeassistant.r2Backup.enabled=true \
-          --set homeassistant.r2Backup.bucket=domotic-test-backups \
+          --set homeassistant.r2Backup.bucket=kube4ha-test-backups \
           --set homeassistant.r2Backup.endpointUrl=https://example.invalid \
           --set homeassistant.r2Backup.existingSecret.name=homeassistant-r2-credentials \
           --set homeassistant.r2Backup.automatic.enabled=true \
-          --set homeassistant.r2Backup.automatic.agentName=domotic-test-backups \
+          --set homeassistant.r2Backup.automatic.agentName=kube4ha-test-backups \
           --set homeassistant.r2Backup.automatic.existingSecret.name=homeassistant-backup-encryption)"
-        printf '%s\n' "$seed_render" | grep -q 'name: domotic-homeassistant-onboarding'
+        printf '%s\n' "$seed_render" | grep -q 'name: kube4ha-homeassistant-onboarding'
         printf '%s\n' "$seed_render" | grep -q 'Home Assistant onboarding is complete'
         printf '%s\n' "$seed_render" | grep -q 'config/core/update'
         printf '%s\n' "$seed_render" | grep -q '/api/config/config_entries/flow'
@@ -312,11 +312,11 @@ tasks:
           --set homeassistant.onboarding.enabled=true \
           --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
           --set homeassistant.r2Backup.enabled=true \
-          --set homeassistant.r2Backup.bucket=domotic-test-backups \
+          --set homeassistant.r2Backup.bucket=kube4ha-test-backups \
           --set homeassistant.r2Backup.endpointUrl=https://example.invalid \
           --set homeassistant.r2Backup.existingSecret.name=homeassistant-r2-credentials \
           --set homeassistant.r2Backup.automatic.enabled=true \
-          --set homeassistant.r2Backup.automatic.agentName=domotic-test-backups)"
+          --set homeassistant.r2Backup.automatic.agentName=kube4ha-test-backups)"
         if printf '%s\n' "$unencrypted_render" | grep -q 'name: AUTOMATIC_BACKUP_PASSWORD'; then
           echo 'unencrypted backups must not reference a password Secret' >&2
           exit 1
@@ -332,10 +332,10 @@ tasks:
           --set homeassistant.onboarding.existingSecret.name=homeassistant-onboarding \
           --set homeassistant.r2Backup.enabled=true \
           --set homeassistant.r2Backup.automatic.enabled=true \
-          --set homeassistant.r2Backup.automatic.agentName=domotic-test-backups \
+          --set homeassistant.r2Backup.automatic.agentName=kube4ha-test-backups \
           --set homeassistant.r2Backup.automatic.existingSecret.name=homeassistant-backup-encryption)"
         printf '%s\n' "$restore_render" | grep -q 'Creating minimal configuration for native restore'
-        if printf '%s\n' "$restore_render" | grep -q 'name: domotic-homeassistant-onboarding'; then
+        if printf '%s\n' "$restore_render" | grep -q 'name: kube4ha-homeassistant-onboarding'; then
           echo 'restore mode must not render the onboarding hook' >&2
           exit 1
         fi

@@ -37,6 +37,8 @@ infra/helm-values-*.yaml
 
 # Temporary files
 .task/
+/.kube4ha/
+/.domotic/
 *.tmp
 *.log
 

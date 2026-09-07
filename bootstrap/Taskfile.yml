@@ -1,8 +1,8 @@
 version: '3'
 
 vars:
-  BOOTSTRAP_RESOLVED_VARS_FILE: '{{.DOMOTIC_BOOTSTRAP_VARS_FILE | default "terraform.tfvars"}}'
-  BOOTSTRAP_RESOLVED_STATE_FILE: '{{.DOMOTIC_BOOTSTRAP_STATE_FILE | default "bootstrap.tfstate"}}'
+  BOOTSTRAP_RESOLVED_VARS_FILE: '{{.KUBE4HA_BOOTSTRAP_VARS_FILE | default .DOMOTIC_BOOTSTRAP_VARS_FILE | default "terraform.tfvars"}}'
+  BOOTSTRAP_RESOLVED_STATE_FILE: '{{.KUBE4HA_BOOTSTRAP_STATE_FILE | default .DOMOTIC_BOOTSTRAP_STATE_FILE | default "bootstrap.tfstate"}}'
   BOOTSTRAP_CHECK_TF_DATA_DIR: '{{.CHECK_TF_DATA_DIR | default ".tofu-check"}}'
 
 tasks:
@@ -56,11 +56,11 @@ tasks:
     desc: Validate bootstrap configuration without accessing state
     cmds:
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.BOOTSTRAP_CHECK_TF_DATA_DIR}}"
         tofu init -backend=false -input=false
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.BOOTSTRAP_CHECK_TF_DATA_DIR}}"
         tofu validate
 
@@ -68,11 +68,11 @@ tasks:
     desc: Run bootstrap OpenTofu tests with a mocked Cloudflare provider
     cmds:
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.BOOTSTRAP_CHECK_TF_DATA_DIR}}"
         tofu init -backend=false -input=false
       - >-
-        TF_VAR_state_passphrase=domotic-static-check-passphrase
+        TF_VAR_state_passphrase=kube4ha-static-check-passphrase
         TF_DATA_DIR="{{.BOOTSTRAP_CHECK_TF_DATA_DIR}}"
         tofu test
 

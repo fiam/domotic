@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(dirname -- "${BASH_SOURCE[0]}")/legacy-environment.sh"
+
 fail() {
   printf 'Error: %s\n' "$*" >&2
   exit 1
@@ -10,7 +12,7 @@ usage() {
   cat >&2 <<'EOF'
 usage: zigbee-keys.sh import BUNDLE INFRA_DIR TF_VARS_FILE
 
-Imports a legacy Domotic Zigbee identity bundle into encrypted OpenTofu state.
+Imports a legacy kube4ha Zigbee identity bundle into encrypted OpenTofu state.
 The bundle is read in memory and is never copied into the deployment.
 EOF
   exit 2

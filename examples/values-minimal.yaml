@@ -1,5 +1,5 @@
 # ==============================================================================
-# Minimal Domotic Configuration Example
+# Minimal kube4ha Configuration Example
 # ==============================================================================
 # This is the bare minimum configuration to get started
 # Assumes: OpenTofu has already created secrets
@@ -18,7 +18,7 @@ zigbee2mqtt:
       adapter: ember              # Change to your adapter type (ember, deconz, zigate, etc.)
 
     mqtt:
-      server: domotic-mosquitto   # Service name from Helm release
+      server: kube4ha-mosquitto   # Service name from Helm release
       port: 1883
 
   # Note: Zigbee network settings (pan_id, channel, network_key, ext_pan_id)
@@ -34,7 +34,7 @@ homeassistant:
     internal_url: "http://homeassistant.local"
 
     mqtt:
-      server: domotic-mosquitto
+      server: kube4ha-mosquitto
       port: 1883
 
 # Cloudflared Tunnel

@@ -97,7 +97,7 @@ because OpenTofu can refresh and remove its Kubernetes resources normally:
 
 ```sh
 kubectl config use-context kind-ha
-task destroy-dev DOMOTIC_TF_VARS_FILE=infra/kind-ha.tfvars
+task destroy-dev KUBE4HA_TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
 The development prefix creates persistent `<prefix>-state` and
@@ -147,7 +147,7 @@ task bootstrap-local
 
 The encrypted bootstrap state stays ignored in a public source checkout. Keep
 the development recovery passphrase in the same place used for the private
-deployment, or export `DOMOTIC_RECOVERY_PASSPHRASE` for disposable automation.
+deployment, or export `KUBE4HA_RECOVERY_PASSPHRASE` for disposable automation.
 
 After deployment, verify the cluster and OpenTofu state:
 
@@ -155,7 +155,7 @@ After deployment, verify the cluster and OpenTofu state:
 kubectl config use-context kind-ha
 kubectl get nodes
 kubectl --namespace kind-ha get pods,httproutes
-task deploy-dev DOMOTIC_TF_VARS_FILE=infra/kind-ha.tfvars
+task deploy-dev KUBE4HA_TF_VARS_FILE=infra/kind-ha.tfvars
 ```
 
 The plan must report no changes after the apply.

@@ -1,3 +1,14 @@
+variable "state_object_key" {
+  description = "R2 object key for encrypted main state; preserve this value for an existing installation."
+  type        = string
+  default     = "kube4ha.tfstate"
+
+  validation {
+    condition     = length(trimspace(var.state_object_key)) > 0
+    error_message = "The encrypted state object key must not be empty."
+  }
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare account API token used to manage the installation foundation."
   type        = string

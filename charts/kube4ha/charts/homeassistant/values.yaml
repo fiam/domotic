@@ -110,7 +110,7 @@ r2Backup:
 zigbee2mqttBackup:
   enabled: false
   schedule: "17 * * * *"
-  directory: .domotic/zigbee2mqtt
+  directory: .kube4ha/zigbee2mqtt
   timeoutSeconds: 120
   startingDeadlineSeconds: 1800
   activeDeadlineSeconds: 300

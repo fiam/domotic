@@ -3,13 +3,13 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd -- "$script_dir/../.." && pwd)"
-temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-private-deployment-test.XXXXXX")"
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/kube4ha-private-deployment-test.XXXXXX")"
 
 # The test builds isolated deployment roots and must not inherit paths exported
 # by the parent Taskfile.
-unset DOMOTIC_BOOTSTRAP_VARS_FILE DOMOTIC_BOOTSTRAP_STATE_FILE \
-  DOMOTIC_TF_VARS_FILE DOMOTIC_GENERATED_HELM_VALUES_FILE \
-  DOMOTIC_PRIVATE_HELM_VALUES_FILE TF_VARS_FILE HELM_VALUES_FILE \
+unset KUBE4HA_BOOTSTRAP_VARS_FILE KUBE4HA_BOOTSTRAP_STATE_FILE \
+  KUBE4HA_TF_VARS_FILE KUBE4HA_GENERATED_HELM_VALUES_FILE \
+  KUBE4HA_PRIVATE_HELM_VALUES_FILE TF_VARS_FILE HELM_VALUES_FILE \
   TERRAFORM_VALUES_FILE VALUES_FILE CONFIG_DIR
 
 cleanup() {
@@ -32,13 +32,13 @@ for template_file in "$repository_root"/scripts/encryption-rollover/*.tf; do
   install -d -m 0700 "$template_dir"
   cp "$template_file" "$template_dir/backend.tf"
   env \
-    TF_VAR_state_passphrase=domotic-new-test-passphrase \
-    TF_VAR_previous_state_passphrase=domotic-old-test-passphrase \
+    TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+    TF_VAR_previous_state_passphrase=kube4ha-old-test-passphrase \
     TF_DATA_DIR="$temp_root/data-rollover-$template_name" \
     tofu -chdir="$template_dir" init -backend=false -input=false >/dev/null
   env \
-    TF_VAR_state_passphrase=domotic-new-test-passphrase \
-    TF_VAR_previous_state_passphrase=domotic-old-test-passphrase \
+    TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+    TF_VAR_previous_state_passphrase=kube4ha-old-test-passphrase \
     TF_DATA_DIR="$temp_root/data-rollover-$template_name" \
     tofu -chdir="$template_dir" validate >/dev/null
 done
@@ -58,47 +58,47 @@ cp "$repository_root/scripts/encryption-rollover/bootstrap-from-rollover.tf" \
 cp "$repository_root/bootstrap/backend.tf" "$rotation_root/final/backend.tf"
 rotation_state="$rotation_root/state.tfstate"
 
-env TF_VAR_state_passphrase=domotic-old-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-original" \
   tofu -chdir="$rotation_root/original" init -input=false -reconfigure \
   -backend-config="path=$rotation_state" >/dev/null
-env TF_VAR_state_passphrase=domotic-old-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-original" \
   tofu -chdir="$rotation_root/original" apply -input=false -auto-approve >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
-  TF_VAR_previous_state_passphrase=domotic-old-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+  TF_VAR_previous_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-to-rollover" \
   tofu -chdir="$rotation_root/to-rollover" init -input=false -reconfigure \
   -backend-config="path=$rotation_state" >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
-  TF_VAR_previous_state_passphrase=domotic-old-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+  TF_VAR_previous_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-to-rollover" \
   tofu -chdir="$rotation_root/to-rollover" apply -refresh-only \
   -input=false -auto-approve >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
-  TF_VAR_previous_state_passphrase=domotic-new-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+  TF_VAR_previous_state_passphrase=kube4ha-new-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-from-rollover" \
   tofu -chdir="$rotation_root/from-rollover" init -input=false -reconfigure \
   -backend-config="path=$rotation_state" >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
-  TF_VAR_previous_state_passphrase=domotic-new-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
+  TF_VAR_previous_state_passphrase=kube4ha-new-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-from-rollover" \
   tofu -chdir="$rotation_root/from-rollover" apply -refresh-only \
   -input=false -auto-approve >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-final" \
   tofu -chdir="$rotation_root/final" init -input=false -reconfigure \
   -backend-config="path=$rotation_state" >/dev/null
-env TF_VAR_state_passphrase=domotic-new-test-passphrase \
+env TF_VAR_state_passphrase=kube4ha-new-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-final" \
   tofu -chdir="$rotation_root/final" state pull >/dev/null
 grep -Fq '"encrypted_data"' "$rotation_state" ||
   fail "passphrase rotation produced an unencrypted state"
-if env TF_VAR_state_passphrase=domotic-old-test-passphrase \
+if env TF_VAR_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-old-final" \
   tofu -chdir="$rotation_root/original" init -input=false -reconfigure \
   -backend-config="path=$rotation_state" >/dev/null 2>&1 &&
-  env TF_VAR_state_passphrase=domotic-old-test-passphrase \
+  env TF_VAR_state_passphrase=kube4ha-old-test-passphrase \
   TF_DATA_DIR="$rotation_root/data-old-final" \
   tofu -chdir="$rotation_root/original" state pull >/dev/null 2>&1; then
   fail "the original passphrase still decrypts rotated state"
@@ -107,7 +107,7 @@ fi
 if grep -Eq 'KUBE_CONTEXT.*default "[^"]+"' \
   "$repository_root/Taskfile.remote.yml" \
   "$repository_root/infra/Taskfile.yml" \
-  "$repository_root/charts/domotic/Taskfile.yml"; then
+  "$repository_root/charts/kube4ha/Taskfile.yml"; then
   fail "a production Taskfile selects a default Kubernetes context"
 fi
 
@@ -119,7 +119,7 @@ duplicate_taskfile_var="$({
     "$repository_root/Taskfile.yml" \
     "$repository_root/bootstrap/Taskfile.yml" \
     "$repository_root/infra/Taskfile.yml" \
-    "$repository_root/charts/domotic/Taskfile.yml" \
+    "$repository_root/charts/kube4ha/Taskfile.yml" \
     "$repository_root/dev/Taskfile.yml"; do
     awk -v file="$taskfile" '
       /^vars:/ { in_vars = 1; next }
@@ -160,7 +160,7 @@ printf '%s\n' "$credentials_task" |
   grep -Fq 'prompt: This prints recovery credentials to the terminal. Continue?' ||
   fail "remote credential task does not own the confirmation prompt"
 printf '%s\n' "$credentials_task" |
-  grep -Fq 'task --yes --dir "{{.RESOLVED_DOMOTIC_SOURCE_DIR}}" credentials:show' ||
+  grep -Fq 'task --yes --dir "{{.RESOLVED_KUBE4HA_SOURCE_DIR}}" credentials:show' ||
   fail "remote credential task does not approve its nested prompt"
 
 # A null root output is absent from OpenTofu state. Credential display must
@@ -200,7 +200,7 @@ printf '%s\n' \
   '  if test "$argument" = init || test "$argument" = apply; then exit 0; fi' \
   'done' \
   'if printf "%s\\n" "$@" | grep -Fqx output; then' \
-  '  printf '\''{"cloudflare_api_token":"test-cloudflare-token","cloudflare_account_id":"00000000000000000000000000000000","endpoint":"https://00000000000000000000000000000000.r2.cloudflarestorage.com","state":{"bucket":"test-home-state","key":"domotic.tfstate","access_key_id":"state-id","secret_access_key":"state-secret"},"backups":{"bucket":"test-home-backups","access_key_id":"backup-id","secret_access_key":"backup-secret"}}'\''' \
+  '  printf '\''{"cloudflare_api_token":"test-cloudflare-token","cloudflare_account_id":"00000000000000000000000000000000","endpoint":"https://00000000000000000000000000000000.r2.cloudflarestorage.com","state":{"bucket":"test-home-state","key":"kube4ha.tfstate","access_key_id":"state-id","secret_access_key":"state-secret"},"backups":{"bucket":"test-home-backups","access_key_id":"backup-id","secret_access_key":"backup-secret"}}'\''' \
   '  exit 0' \
   'fi' \
   'exit 1' > "$temp_root/bin/tofu"
@@ -214,23 +214,23 @@ install -d -m 0700 "$bootstrap_delegation_root/config"
 printf '%s\n' 'r2_bucket_prefix = "test-home"' \
   > "$bootstrap_delegation_root/config/bootstrap.tfvars"
 PATH="$temp_root/bin:$PATH" \
-TF_VAR_state_passphrase=domotic-test-recovery-passphrase \
+TF_VAR_state_passphrase=kube4ha-test-recovery-passphrase \
 TF_VAR_cloudflare_api_token=test-cloudflare-token \
-DOMOTIC_CONFIG_DIR="$bootstrap_delegation_root/config" \
-DOMOTIC_BOOTSTRAP_VARS_FILE="$bootstrap_delegation_root/config/bootstrap.tfvars" \
-DOMOTIC_BOOTSTRAP_STATE_FILE="$bootstrap_delegation_root/state/bootstrap.tfstate" \
+KUBE4HA_CONFIG_DIR="$bootstrap_delegation_root/config" \
+KUBE4HA_BOOTSTRAP_VARS_FILE="$bootstrap_delegation_root/config/bootstrap.tfvars" \
+KUBE4HA_BOOTSTRAP_STATE_FILE="$bootstrap_delegation_root/state/bootstrap.tfstate" \
   task --silent --dir "$repository_root" bootstrap:init >/dev/null ||
   fail "root Taskfile did not pass bootstrap paths to its included Taskfile"
 
 PATH="$temp_root/bin:$PATH" \
-DOMOTIC_RECOVERY_PASSPHRASE=domotic-test-recovery-passphrase \
+KUBE4HA_RECOVERY_PASSPHRASE=kube4ha-test-recovery-passphrase \
 KUBECONFIG="$temp_root/kube-a:$temp_root/kube-b" \
   env -u KUBE_CONFIG_PATH -u KUBE_CONFIG_PATHS \
   "$repository_root/scripts/with-opentofu-environment.sh" \
   runtime "$repository_root" "$temp_root/runtime" "$temp_root/runtime/config" -- \
   sh -c '
     test "$CLOUDFLARE_API_TOKEN" = test-cloudflare-token
-    test "$DOMOTIC_STATE_BUCKET" = test-home-state
+    test "$KUBE4HA_STATE_BUCKET" = test-home-state
     test "$TF_VAR_r2_endpoint" = https://00000000000000000000000000000000.r2.cloudflarestorage.com
     test "$TF_VAR_r2_backup_bucket_name" = test-home-backups
     test "$AWS_ACCESS_KEY_ID" = state-id
@@ -241,12 +241,12 @@ KUBECONFIG="$temp_root/kube-a:$temp_root/kube-b" \
   ' || fail "runtime wrapper did not inject bootstrap-state values"
 
 PATH="$temp_root/bin:$PATH" \
-DOMOTIC_RECOVERY_PASSPHRASE=domotic-test-recovery-passphrase \
+KUBE4HA_RECOVERY_PASSPHRASE=kube4ha-test-recovery-passphrase \
 CLOUDFLARE_API_TOKEN=test-cloudflare-token \
   "$repository_root/scripts/with-opentofu-environment.sh" \
   bootstrap "$repository_root" "$temp_root/runtime" "$temp_root/runtime/config" -- \
   sh -c '
-    test "$TF_VAR_state_passphrase" = domotic-test-recovery-passphrase
+    test "$TF_VAR_state_passphrase" = kube4ha-test-recovery-passphrase
     test "$TF_VAR_cloudflare_api_token" = test-cloudflare-token
   ' || fail "bootstrap wrapper did not inject operator credentials"
 
@@ -262,11 +262,11 @@ printf '%s\n' 'homeassistant: {}' > "$config_dir/values.yaml"
 printf '%s\n' \
   '{' \
   '  "serial": 1,' \
-  '  "meta": {"domotic-bootstrap": "test"},' \
+  '  "meta": {"kube4ha-bootstrap": "test"},' \
   '  "encrypted_data": "ciphertext"' \
   '}' > "$private_root/state/bootstrap.tfstate"
 printf '%s\n' \
-  '/.domotic/' \
+  '/.kube4ha/' \
   '/config/infra/helm-values.yaml' \
   '/config/infra/zigbee-keys.tfvars.json' \
   '/config/restore/' \
@@ -294,7 +294,7 @@ run_config_check >/dev/null
 generated_values_path="$config_dir/infra/helm-values.yaml"
 private_values_path="$config_dir/values.yaml"
 helm_values_dry_run="$(
-  DOMOTIC_CONFIG_DIR="$config_dir" \
+  KUBE4HA_CONFIG_DIR="$config_dir" \
     task --dry --dir "$repository_root" infra:helm-values 2>&1
 )"
 printf '%s\n' "$helm_values_dry_run" | grep -Fq "$generated_values_path" ||
@@ -344,7 +344,7 @@ git -C "$fixture_repository" add -A
 git -C "$fixture_repository" add -f \
   examples/private-deployment/config/bootstrap.tfvars
 git -C "$fixture_repository" \
-  -c user.name='Domotic Tests' \
+  -c user.name='kube4ha Tests' \
   -c user.email='tests@example.invalid' \
   commit --quiet -m 'test: snapshot private deployment workflow'
 
@@ -352,24 +352,24 @@ revision="$(git -C "$fixture_repository" rev-parse HEAD)"
 git -C "$fixture_repository" branch test-release "$revision"
 
 equivalent_taskfile="$temp_root/Taskfile.remote.yml?ref=$revision"
-equivalent_source_cache="$temp_root/equivalent/.domotic/source"
+equivalent_source_cache="$temp_root/equivalent/.kube4ha/source"
 cp "$repository_root/Taskfile.remote.yml" "$equivalent_taskfile"
 git clone --quiet "$fixture_repository" "$equivalent_source_cache"
 git -C "$equivalent_source_cache" remote set-url origin git@github.com:fiam/domotic.git
 env \
   PRIVATE_ROOT="$temp_root/equivalent" \
-  DOMOTIC_SOURCE_DIR="$equivalent_source_cache" \
-  DOMOTIC_REPOSITORY=https://github.com/fiam/domotic.git \
+  KUBE4HA_SOURCE_DIR="$equivalent_source_cache" \
+  KUBE4HA_REPOSITORY=https://github.com/fiam/kube4ha.git \
   task --silent --taskfile "$equivalent_taskfile" version >/dev/null
 [[ "$(git -C "$equivalent_source_cache" config --local --get remote.origin.url)" == \
-  https://github.com/fiam/domotic.git ]] ||
+  https://github.com/fiam/kube4ha.git ]] ||
   fail "remote Taskfile did not normalize an equivalent GitHub origin"
 
-source_cache="$temp_root/remote/.domotic/source"
+source_cache="$temp_root/remote/.kube4ha/source"
 env \
   PRIVATE_ROOT="$temp_root/remote" \
-  DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
+  KUBE4HA_SOURCE_DIR="$source_cache" \
+  KUBE4HA_REPOSITORY="$fixture_repository" \
   task --silent --taskfile "$repository_root/Taskfile.remote.yml" version >/dev/null
 [[ "$(git -C "$source_cache" rev-parse HEAD)" == "$revision" ]] ||
   fail "remote Taskfile did not materialize the pinned revision"
@@ -378,19 +378,19 @@ printf '%s\n' modified >> "$source_cache/README.md"
 printf '%s\n' untracked > "$source_cache/untracked-test-file"
 env \
   PRIVATE_ROOT="$temp_root/remote" \
-  DOMOTIC_SOURCE_DIR="$source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
+  KUBE4HA_SOURCE_DIR="$source_cache" \
+  KUBE4HA_REPOSITORY="$fixture_repository" \
   task --silent --taskfile "$repository_root/Taskfile.remote.yml" version >/dev/null
 [[ -z "$(git -C "$source_cache" status --short)" ]] ||
   fail "remote Taskfile did not normalize the source cache"
 
 tag_taskfile="$temp_root/Taskfile.remote.yml?ref=test-release"
-tag_source_cache="$temp_root/tagged/.domotic/source"
+tag_source_cache="$temp_root/tagged/.kube4ha/source"
 cp "$repository_root/Taskfile.remote.yml" "$tag_taskfile"
 env \
   PRIVATE_ROOT="$temp_root/tagged" \
-  DOMOTIC_SOURCE_DIR="$tag_source_cache" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
+  KUBE4HA_SOURCE_DIR="$tag_source_cache" \
+  KUBE4HA_REPOSITORY="$fixture_repository" \
   task --silent --taskfile "$tag_taskfile" version >/dev/null
 [[ "$(git -C "$tag_source_cache" rev-parse HEAD)" == "$revision" ]] ||
   fail "remote Taskfile did not resolve the ref from its URL"
@@ -403,33 +403,52 @@ pinned_taskfile="$temp_root/Taskfile.pinned.yml"
 printf '%s\n' \
   "version: '3'" \
   'vars:' \
-  "  DOMOTIC_REF: $revision" \
+  "  KUBE4HA_REF: $revision" \
   'includes:' \
-  '  domotic:' \
+  '  kube4ha:' \
   "    taskfile: '$repository_root/Taskfile.remote.yml'" \
   '    flatten: true' \
   '    vars:' \
-  "      DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'" \
+  "      KUBE4HA_PINNED_REF: '{{.KUBE4HA_REF}}'" \
   "      PRIVATE_ROOT: '$pinned_root'" \
-  "      DOMOTIC_SOURCE_DIR: '$pinned_root/.domotic/source'" \
-  "      DOMOTIC_REPOSITORY: '$fixture_repository'" \
+  "      KUBE4HA_SOURCE_DIR: '$pinned_root/.kube4ha/source'" \
+  "      KUBE4HA_REPOSITORY: '$fixture_repository'" \
   > "$pinned_taskfile"
 task --silent --taskfile "$pinned_taskfile" version >/dev/null
-[[ "$(git -C "$pinned_root/.domotic/source" rev-parse HEAD)" == "$revision" ]] ||
+[[ "$(git -C "$pinned_root/.kube4ha/source" rev-parse HEAD)" == "$revision" ]] ||
   fail "private Taskfile did not materialize its explicit source pin"
+
+# An unchanged legacy wrapper keeps its cache, pin, and deployment identities.
+legacy_root="$temp_root/legacy"
+mkdir -p "$legacy_root"
+sed -e 's/KUBE4HA/DOMOTIC/g' -e 's/\.kube4ha\//.domotic\//g' \
+  -e "s#$pinned_root#$legacy_root#g" \
+  "$pinned_taskfile" > "$legacy_root/Taskfile.yml"
+# Keep loading the current entrypoint; only the wrapper uses the old spelling.
+sed -i.bak "s#taskfile: .*#taskfile: '$repository_root/Taskfile.remote.yml'#" \
+  "$legacy_root/Taskfile.yml"
+rm "$legacy_root/Taskfile.yml.bak"
+task --silent --taskfile "$legacy_root/Taskfile.yml" version >/dev/null
+[[ "$(git -C "$legacy_root/.domotic/source" rev-parse HEAD)" == "$revision" ]] ||
+  fail "legacy wrapper did not retain its source cache and pin"
+legacy_status="$(task --dry --taskfile "$legacy_root/Taskfile.yml" status 2>&1)"
+printf '%s\n' "$legacy_status" | grep -Fq 'RELEASE_NAME="domotic"' ||
+  fail "legacy wrapper did not retain its Helm release"
+printf '%s\n' "$legacy_status" | grep -Fq 'NAMESPACE="domotic"' ||
+  fail "legacy wrapper did not retain its namespace"
 
 initialized_root="$temp_root/initialized"
 env \
   PRIVATE_ROOT="$initialized_root" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
+  KUBE4HA_REPOSITORY="$fixture_repository" \
   task --silent --taskfile "$repository_root/Taskfile.remote.yml" init
-grep -Fq "DOMOTIC_REF: $revision" "$initialized_root/Taskfile.yml" ||
+grep -Fq "KUBE4HA_REF: $revision" "$initialized_root/Taskfile.yml" ||
   fail "remote initialization did not pin the selected revision"
 grep -Fq \
-  "taskfile: 'https://raw.githubusercontent.com/fiam/domotic/{{.DOMOTIC_REF}}/Taskfile.remote.yml'" \
+  "taskfile: 'https://raw.githubusercontent.com/fiam/kube4ha/{{.KUBE4HA_REF}}/Taskfile.remote.yml'" \
   "$initialized_root/Taskfile.yml" ||
   fail "private Taskfile does not fetch its entrypoint by immutable commit URL"
-grep -Fq "DOMOTIC_PINNED_REF: '{{.DOMOTIC_REF}}'" \
+grep -Fq "KUBE4HA_PINNED_REF: '{{.KUBE4HA_REF}}'" \
   "$initialized_root/Taskfile.yml" ||
   fail "private Taskfile does not pass its source pin to the remote entrypoint"
 if grep -q 'KUBE_CONTEXT' "$initialized_root/Taskfile.yml"; then
@@ -453,16 +472,16 @@ install -d -m 0700 "$initialized_root/state"
 printf '%s\n' \
   '{' \
   '  "serial": 1,' \
-  '  "meta": {"domotic-bootstrap": "test"},' \
+  '  "meta": {"kube4ha-bootstrap": "test"},' \
   '  "encrypted_data": "ciphertext"' \
   '}' > "$initialized_root/state/bootstrap.tfstate"
 sed -i.bak -E \
-  "s#taskfile: 'https://raw.githubusercontent.com/fiam/domotic/\{\{\.DOMOTIC_REF\}\}/Taskfile.remote.yml'#taskfile: '$repository_root/Taskfile.remote.yml'#" \
+  "s#taskfile: 'https://raw.githubusercontent.com/fiam/kube4ha/\{\{\.KUBE4HA_REF\}\}/Taskfile.remote.yml'#taskfile: '$repository_root/Taskfile.remote.yml'#" \
   "$initialized_root/Taskfile.yml"
 rm "$initialized_root/Taskfile.yml.bak"
 sed -i.bak \
-  "/DOMOTIC_PINNED_REF:/a\\
-      DOMOTIC_REPOSITORY: '$fixture_repository'" \
+  "/KUBE4HA_PINNED_REF:/a\\
+      KUBE4HA_REPOSITORY: '$fixture_repository'" \
   "$initialized_root/Taskfile.yml"
 rm "$initialized_root/Taskfile.yml.bak"
 git -C "$initialized_root" add \
@@ -472,25 +491,28 @@ git -C "$initialized_root" add \
   config/infra/terraform.tfvars \
   config/values.yaml \
   state/bootstrap.tfstate
-rm -rf -- "$initialized_root/.domotic"
+rm -rf -- "$initialized_root/.kube4ha"
 (
   cd "$initialized_root"
-  DOMOTIC_REPOSITORY="$fixture_repository" \
+  KUBE4HA_REPOSITORY="$fixture_repository" \
     task --silent config:check >/dev/null
 )
 
 git -C "$fixture_repository" \
-  -c user.name='Domotic Tests' \
+  -c user.name='kube4ha Tests' \
   -c user.email='tests@example.invalid' \
   -c commit.gpgsign=false \
   commit --quiet --allow-empty -m 'test: newer remote revision'
 updated_revision="$(git -C "$fixture_repository" rev-parse HEAD)"
 env \
   PRIVATE_ROOT="$initialized_root" \
-  DOMOTIC_REPOSITORY="$fixture_repository" \
-  task --silent --taskfile "$repository_root/Taskfile.remote.yml" domotic:update
-grep -Fq "DOMOTIC_REF: $updated_revision" "$initialized_root/Taskfile.yml" ||
-  fail "Domotic update did not pin the resolved revision"
+  KUBE4HA_REPOSITORY="$fixture_repository" \
+  task --silent --taskfile "$repository_root/Taskfile.remote.yml" kube4ha:update
+grep -Fq "KUBE4HA_REF: $updated_revision" "$initialized_root/Taskfile.yml" ||
+  fail "kube4ha update did not pin the resolved revision"
+task --silent --taskfile "$legacy_root/Taskfile.yml" domotic:update
+grep -Fq "DOMOTIC_REF: $updated_revision" "$legacy_root/Taskfile.yml" ||
+  fail "legacy update alias did not retain and update the legacy pin key"
 
 values_file="$initialized_root/config/values.yaml"
 "$repository_root/scripts/set-homeassistant-version.sh" "$values_file" "2099.12.7"

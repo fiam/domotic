@@ -45,7 +45,7 @@ The docker-compose setup is for development only. For production, deploy to Kube
 ### Kubernetes Deployment
 
 From the repository root, use the development Taskfile. It defaults to the
-`kind-domotic` context:
+`kind-kube4ha` context:
 
 ```bash
 # Deploy

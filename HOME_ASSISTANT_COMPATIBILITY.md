@@ -30,17 +30,21 @@ Last verified: **2026-09-04**
 | Custom integration delivery | HACS installed by default from a pinned release; checksum-pinned remote installation and writable-PVC restore verified |
 | Zigbee2MQTT snapshot staging | hourly CronJob; validated latest ZIP under `/config/.domotic/zigbee2mqtt` |
 
+The baseline above predates the kube4ha rename. New installations now default
+to `/config/.kube4ha/zigbee2mqtt`; existing deployments can retain the validated
+path as described in [MIGRATION.md](MIGRATION.md).
+
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
 the image explicitly, and the README badge identifies the audited version.
 Keep all five locations aligned.
 
 Private deployments may retain an older image in `config/values.yaml` while
-updating their Domotic source pin. `task homeassistant:update` copies the
+updating their kube4ha source pin. `task homeassistant:update` copies the
 verified Home Assistant `appVersion` from that source into the private values
 file before running Helm. It deliberately does not accept an arbitrary image
 tag; a different version first requires this compatibility audit and a new
-Domotic revision.
+kube4ha revision.
 
 ## Private and version-coupled behavior
 

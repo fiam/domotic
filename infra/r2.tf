@@ -19,7 +19,7 @@ locals {
 resource "kubernetes_secret" "homeassistant_r2_credentials" {
   count = var.r2_backup_bucket_name == null ? 0 : 1
 
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
 
   metadata {
     name      = "homeassistant-r2-credentials"
@@ -52,7 +52,7 @@ resource "kubernetes_secret" "homeassistant_backup_encryption" {
     var.homeassistant_backup_encryption_enabled
   ) ? 1 : 0
 
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
 
   metadata {
     name      = "homeassistant-backup-encryption"
@@ -64,7 +64,7 @@ resource "kubernetes_secret" "homeassistant_backup_encryption" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/description" = "Home Assistant native backup recovery password"
+      "kube4ha.fiam.github.com/description" = "Home Assistant native backup recovery password"
     }
   }
 

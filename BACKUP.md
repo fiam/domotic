@@ -1,6 +1,6 @@
 # Backups and disaster recovery
 
-Domotic uses two private Cloudflare R2 buckets for different purposes:
+kube4ha uses two private Cloudflare R2 buckets for different purposes:
 
 - `<prefix>-state` contains client-side encrypted OpenTofu state;
 - `<prefix>-backups` contains Home Assistant native backups.
@@ -8,7 +8,7 @@ Domotic uses two private Cloudflare R2 buckets for different purposes:
 The buckets have different scoped credentials. Home Assistant cannot read or
 modify infrastructure state.
 
-There is no separate Domotic repository-backup command. The private Git
+There is no separate kube4ha repository-backup command. The private Git
 repository, encrypted OpenTofu state, and Home Assistant native backups are the
 recovery set.
 
@@ -42,7 +42,7 @@ r2_location           = "weur" # optional
 
 `task bootstrap` creates `my-home-state` and `my-home-backups`, plus one
 object read/write token for each bucket. Use a different prefix for every
-Domotic installation sharing the Cloudflare account.
+kube4ha installation sharing the Cloudflare account.
 
 Both buckets are private and protected from ordinary OpenTofu destruction.
 The state backend also uses OpenTofu's adjacent `.tflock` object to serialize
@@ -89,8 +89,8 @@ An hourly Kubernetes CronJob asks Zigbee2MQTT for its documented data-directory
 backup over MQTT. It validates the response as a ZIP and atomically replaces:
 
 ```text
-/config/.domotic/zigbee2mqtt/latest.zip
-/config/.domotic/zigbee2mqtt/latest.timestamp
+/config/.kube4ha/zigbee2mqtt/latest.zip
+/config/.kube4ha/zigbee2mqtt/latest.timestamp
 ```
 
 Home Assistant includes that directory in its native `/config` archive. Only
@@ -115,8 +115,8 @@ homeassistant:
 Inspect execution status without displaying archive contents:
 
 ```sh
-kubectl -n domotic get cronjob domotic-homeassistant-z2m-backup
-kubectl -n domotic get jobs \
+kubectl -n kube4ha get cronjob kube4ha-homeassistant-z2m-backup
+kubectl -n kube4ha get jobs \
   -l app.kubernetes.io/component=zigbee2mqtt-backup
 ```
 

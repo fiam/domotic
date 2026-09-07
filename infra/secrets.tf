@@ -17,7 +17,7 @@ data "kubernetes_resources" "zigbee_keys_existing" {
   field_selector = "metadata.name=zigbee-keys"
 
   # A namespaced list request requires the namespace to exist on first apply.
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
 }
 
 data "kubernetes_resources" "zigbee_network_existing" {
@@ -26,7 +26,7 @@ data "kubernetes_resources" "zigbee_network_existing" {
   namespace      = var.kubernetes_namespace
   field_selector = "metadata.name=zigbee-network"
 
-  depends_on = [kubernetes_namespace.domotic]
+  depends_on = [kubernetes_namespace.kube4ha]
 }
 
 # ------------------------------------------------------------------------------
@@ -42,15 +42,15 @@ locals {
   configmap_exists = local.existing_configmap_object != null
 
   # Check if resources are marked as protected
-  secret_protected = try(
-    local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/protected"],
-    "false"
-  ) == "true"
+  secret_protected = anytrue([
+    for prefix in ["kube4ha.fiam.github.com", "domotic.fiam.github.com"] :
+    try(local.existing_secret_object.metadata.annotations["${prefix}/protected"], "false") == "true"
+  ])
 
-  configmap_protected = try(
-    local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/protected"],
-    "false"
-  ) == "true"
+  configmap_protected = anytrue([
+    for prefix in ["kube4ha.fiam.github.com", "domotic.fiam.github.com"] :
+    try(local.existing_configmap_object.metadata.annotations["${prefix}/protected"], "false") == "true"
+  ])
 
   # The generic Kubernetes API returns Secret values as base64. Mark the decoded
   # values sensitive explicitly because the generic data source cannot infer it.
@@ -235,7 +235,7 @@ moved {
 resource "kubernetes_config_map" "zigbee_network" {
   depends_on = [
     terraform_data.zigbee_protection_check,
-    kubernetes_namespace.domotic
+    kubernetes_namespace.kube4ha
   ]
 
   metadata {
@@ -248,20 +248,22 @@ resource "kubernetes_config_map" "zigbee_network" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/protected"   = "true"
-      "domotic.fiam.github.com/description" = "Protected Zigbee network configuration - changing breaks network"
+      "kube4ha.fiam.github.com/protected"   = "true"
+      "kube4ha.fiam.github.com/description" = "Protected Zigbee network configuration - changing breaks network"
 
-      "domotic.fiam.github.com/created.at" = try(
+      "kube4ha.fiam.github.com/created.at" = try(
+        local.existing_configmap_object.metadata.annotations["kube4ha.fiam.github.com/created.at"],
         local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/created.at"],
         timestamp()
       )
 
-      "domotic.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
+      "kube4ha.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
+        local.existing_configmap_object.metadata.annotations["kube4ha.fiam.github.com/last.updated"],
         local.existing_configmap_object.metadata.annotations["domotic.fiam.github.com/last.updated"],
         ""
       )
 
-      "domotic.fiam.github.com/update.reason" = var.force_update_secrets ? "force_update_secrets=true" : ""
+      "kube4ha.fiam.github.com/update.reason" = var.force_update_secrets ? "force_update_secrets=true" : ""
     }
   }
 
@@ -279,7 +281,7 @@ resource "kubernetes_config_map" "zigbee_network" {
 resource "kubernetes_secret" "zigbee_keys" {
   depends_on = [
     terraform_data.zigbee_protection_check,
-    kubernetes_namespace.domotic
+    kubernetes_namespace.kube4ha
   ]
 
   metadata {
@@ -292,20 +294,22 @@ resource "kubernetes_secret" "zigbee_keys" {
     }
 
     annotations = {
-      "domotic.fiam.github.com/protected"   = "true"
-      "domotic.fiam.github.com/description" = "Protected Zigbee network keys - NEVER commit these"
+      "kube4ha.fiam.github.com/protected"   = "true"
+      "kube4ha.fiam.github.com/description" = "Protected Zigbee network keys - NEVER commit these"
 
-      "domotic.fiam.github.com/created.at" = try(
+      "kube4ha.fiam.github.com/created.at" = try(
+        local.existing_secret_object.metadata.annotations["kube4ha.fiam.github.com/created.at"],
         local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/created.at"],
         timestamp()
       )
 
-      "domotic.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
+      "kube4ha.fiam.github.com/last.updated" = var.force_update_secrets ? timestamp() : try(
+        local.existing_secret_object.metadata.annotations["kube4ha.fiam.github.com/last.updated"],
         local.existing_secret_object.metadata.annotations["domotic.fiam.github.com/last.updated"],
         ""
       )
 
-      "domotic.fiam.github.com/update.reason" = var.force_update_secrets ? "force_update_secrets=true" : ""
+      "kube4ha.fiam.github.com/update.reason" = var.force_update_secrets ? "force_update_secrets=true" : ""
     }
   }
 

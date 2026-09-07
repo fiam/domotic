@@ -1,5 +1,5 @@
 # ==============================================================================
-# Production Domotic Configuration Example
+# Production kube4ha Configuration Example
 # ==============================================================================
 # Full-featured configuration with HTTPRoute, persistence, and resource limits
 

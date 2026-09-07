@@ -1,5 +1,5 @@
 output "runtime" {
-  description = "Sensitive values consumed by Domotic tasks; do not print this output."
+  description = "Sensitive values consumed by kube4ha tasks; do not print this output."
   sensitive   = true
   value = {
     cloudflare_api_token  = var.cloudflare_api_token
@@ -7,7 +7,7 @@ output "runtime" {
     endpoint              = local.r2_endpoint
     state = {
       bucket            = cloudflare_r2_bucket.state.name
-      key               = "domotic.tfstate"
+      key               = var.state_object_key
       access_key_id     = cloudflare_account_token.state.id
       secret_access_key = sha256(cloudflare_account_token.state.value)
     }

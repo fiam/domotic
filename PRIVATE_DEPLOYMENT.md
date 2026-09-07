@@ -1,12 +1,15 @@
-# Run Domotic from a private repository
+# Run kube4ha from a private repository
+
+For an existing Domotic deployment, follow [MIGRATION.md](MIGRATION.md) before
+changing the source pin or adopting the new defaults.
 
 Keep hostnames, device settings, and encrypted bootstrap state in an
 independent private repository. Do not use a GitHub fork: a fork of a public
 repository remains public.
 
-The private repository contains only your configuration and a pinned Domotic
+The private repository contains only your configuration and a pinned kube4ha
 revision. Its Taskfile fetches the entrypoint through an immutable commit URL,
-then downloads that same revision into the ignored `.domotic` directory when a
+then downloads that same revision into the ignored `.kube4ha` directory when a
 command runs.
 
 ## Create the repository
@@ -16,7 +19,7 @@ mkdir home-deployment
 cd home-deployment
 
 task --taskfile \
-  'https://github.com/fiam/domotic.git//Taskfile.remote.yml?ref=main' \
+  'https://github.com/fiam/kube4ha.git//Taskfile.remote.yml?ref=main' \
   init
 ```
 
@@ -36,8 +39,8 @@ home-deployment/
     └── bootstrap.tfstate       # created by task bootstrap and committed
 ```
 
-`.domotic` and generated Helm values are ignored. Do not edit the materialized
-source under `.domotic`.
+`.kube4ha` and generated Helm values are ignored. Do not edit the materialized
+source under `.kube4ha`.
 
 ## Bootstrap Cloudflare and state
 
@@ -61,7 +64,7 @@ r2_location           = "weur" # optional
 ```
 
 This creates `my-home-state` and `my-home-backups`. Bucket names are scoped to
-the Cloudflare account, so every Domotic installation in that account must use
+the Cloudflare account, so every kube4ha installation in that account must use
 a different prefix.
 
 Run:
@@ -81,7 +84,7 @@ credentials, but none of those values are readable without the passphrase.
 
 Task does not create commits or push on your behalf. Keep the recovery
 passphrase outside this repository, preferably in a password manager. Set
-`DOMOTIC_RECOVERY_PASSPHRASE` when a password manager or automation supplies
+`KUBE4HA_RECOVERY_PASSPHRASE` when a password manager or automation supplies
 it; otherwise Task prompts without echoing it.
 
 ## Configure the installation
@@ -205,16 +208,16 @@ is not.
 
 ## Updates and credential rotation
 
-Update the pinned Domotic source without deploying it:
+Update the pinned kube4ha source without deploying it:
 
 ```sh
-task domotic:update REF=main
+task kube4ha:update REF=main
 git diff -- Taskfile.yml
 task check
 ```
 
 After reviewing the change, `task homeassistant:update` selects the Home
-Assistant version verified by that Domotic revision and performs a Helm-only
+Assistant version verified by that kube4ha revision and performs a Helm-only
 deployment. A native backup should exist before every Home Assistant update.
 
 Replace the Cloudflare account token with:

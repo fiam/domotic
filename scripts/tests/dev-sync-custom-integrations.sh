@@ -4,7 +4,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd -- "$script_dir/../.." && pwd)"
-temp_root="$(mktemp -d "${TMPDIR:-/tmp}/domotic-integration-sync-test.XXXXXX")"
+temp_root="$(mktemp -d "${TMPDIR:-/tmp}/kube4ha-integration-sync-test.XXXXXX")"
 
 cleanup() {
   rm -rf -- "$temp_root"
@@ -140,7 +140,7 @@ FAKE_KUBECTL_LOG="$temp_root/kubectl.log" \
   fail "AppleDouble metadata was copied"
 [[ ! -e "$temp_root/config/custom_components/example_integration/__pycache__/cache.pyc" ]] ||
   fail "source Python cache files were copied"
-find "$temp_root/config/.domotic-local-integrations/backups" \
+find "$temp_root/config/.kube4ha-local-integrations/backups" \
   -path '*/example_integration/old.py' -type f -print -quit | grep -q . ||
   fail "the previous integration source was not preserved"
 grep -Fq 'rollout restart deployment/test-homeassistant' "$temp_root/kubectl.log" ||
