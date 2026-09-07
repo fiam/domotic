@@ -1,8 +1,5 @@
 # Run kube4ha from a private repository
 
-For an existing Domotic deployment, follow [MIGRATION.md](MIGRATION.md) before
-changing the source pin or adopting the new defaults.
-
 Keep hostnames, device settings, and encrypted bootstrap state in an
 independent private repository. Do not use a GitHub fork: a fork of a public
 repository remains public.

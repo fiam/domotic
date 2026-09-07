@@ -30,9 +30,8 @@ Last verified: **2026-09-04**
 | Custom integration delivery | HACS installed by default from a pinned release; checksum-pinned remote installation and writable-PVC restore verified |
 | Zigbee2MQTT snapshot staging | hourly CronJob; validated latest ZIP under `/config/.domotic/zigbee2mqtt` |
 
-The baseline above predates the kube4ha rename. New installations now default
-to `/config/.kube4ha/zigbee2mqtt`; existing deployments can retain the validated
-path as described in [MIGRATION.md](MIGRATION.md).
+The current default is `/config/.kube4ha/zigbee2mqtt`. The staging directory is
+configurable with `homeassistant.zigbee2mqttBackup.directory`.
 
 The version pin lives in the root and Home Assistant `Chart.yaml` files and in
 the Home Assistant default values. `examples/values-production.yaml` also pins
