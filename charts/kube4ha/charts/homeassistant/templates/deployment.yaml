@@ -94,7 +94,7 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       {{- if $matterRunning }}
-      terminationGracePeriodSeconds: 90
+      terminationGracePeriodSeconds: 180
       {{- end }}
       initContainers:
         {{- if .Values.matterServer.backup.enabled }}

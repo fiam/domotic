@@ -106,8 +106,10 @@ server directory, and atomically replaces:
 ```
 
 The archive records its format, Matter image, and creation time. Matter restarts
-even if snapshot creation fails; devices briefly reconnect while Home Assistant
-remains available. A failed graceful stop, forced kill, or invalid snapshot
+even if snapshot creation fails; devices reconnect while Home Assistant remains
+available. Closing WebSocket clients can take about 30 seconds; the supervisor
+allows up to 60 seconds for a graceful shutdown and storage flush. A failed
+graceful stop, forced kill, or invalid snapshot
 fails the native backup and preserves the previous archive. Check failures in
 Home Assistant's backup settings.
 

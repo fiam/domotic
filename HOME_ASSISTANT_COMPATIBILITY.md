@@ -319,6 +319,11 @@ the integration reached `loaded`, and a subsequent native backup succeeded.
 The full `task check` suite includes unsafe/corrupt archive rejection, existing
 fabric preservation, snapshot serialization, graceful flush ordering, process
 restart after failure, and the default/disabled/restore Helm renderings.
+The live deployment exposed a WebSocket close handshake that exceeded the
+original 20-second shutdown limit. The supervisor now allows 60 seconds, covering
+the pinned `ws` library's 30-second close timeout before Matter flushes storage.
+A regression test exercises a 31-second graceful stop; the native backup hook
+and pod termination budgets also cover shutdown and archive validation.
 Restore-mode rendering contains no Matter process, initializer, or onboarding
 hook. The live Matter PVC remains separate, while native backups include the
 cold snapshot. See [BACKUP.md](BACKUP.md#restore-onto-a-new-cluster) for recovery.

@@ -39,7 +39,9 @@ export async function archiveState({ storage, backup, image }) {
   }
 }
 
-export function supervise({ command, storage, backup, socket, image, port, stopTimeout = 20000, fatal = () => process.exit(1) }) {
+// ws allows 30 seconds for peers to acknowledge a close frame. Give that
+// handshake time to finish before waiting for Matter's storage flush.
+export function supervise({ command, storage, backup, socket, image, port, stopTimeout = 60000, fatal = () => process.exit(1) }) {
   let child;
   let snapshot;
   let closing = false;
@@ -70,7 +72,11 @@ export function supervise({ command, storage, backup, socket, image, port, stopT
     stopped.kill('SIGTERM');
     let exit;
     try { exit = await result; } finally { clearTimeout(timer); child = undefined; }
-    if (forced || exit.code !== 0 || exit.signal) throw new Error('Matter did not stop cleanly');
+    if (forced) {
+      console.error('Matter exceeded its graceful shutdown timeout');
+      throw new Error('Matter did not stop cleanly');
+    }
+    if (exit.code !== 0 || exit.signal) throw new Error('Matter did not stop cleanly');
   }
 
   async function healthy() {

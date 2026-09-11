@@ -18,7 +18,7 @@ function call(socket, method, path) {
   });
 }
 
-async function fixture(t, ignoreTerm = false) {
+async function fixture(t, { ignoreTerm = false, firstStopDelay = 150, stopTimeout = 2000 } = {}) {
   const root = await mkdtemp('/tmp/kube4ha-matter-test-');
   const storage = join(root, 'data');
   const backup = join(root, 'backup');
@@ -34,10 +34,10 @@ async function fixture(t, ignoreTerm = false) {
     const http = require('node:http'), fs = require('node:fs');
     const server = http.createServer((req,res) => res.end('{}')).listen(${port}, '127.0.0.1');
     process.on('SIGTERM', () => {
-      ${ignoreTerm ? '' : `setTimeout(() => { fs.writeFileSync(${JSON.stringify(join(storage, 'server/state'))}, 'flushed'); server.close(() => process.exit(0)); }, 150);`}
+      ${ignoreTerm ? '' : `const state = ${JSON.stringify(join(storage, 'server/state'))}; const delay = fs.readFileSync(state, 'utf8') === 'initial' ? ${firstStopDelay} : 150; setTimeout(() => { fs.writeFileSync(state, 'flushed'); server.close(() => process.exit(0)); }, delay);`}
     });
   `;
-  const supervisor = supervise({ command: [process.execPath, '-e', code], storage, backup, socket, image: 'fixture:1.0.0', port, stopTimeout: ignoreTerm ? 100 : 2000, fatal: () => assert.fail('Unexpected process failure') });
+  const supervisor = supervise({ command: [process.execPath, '-e', code], storage, backup, socket, image: 'fixture:1.0.0', port, ...(stopTimeout === null ? {} : { stopTimeout }), fatal: () => assert.fail('Unexpected process failure') });
   await supervisor.listen();
   t.after(async () => { await supervisor.close(); await rm(root, { recursive: true, force: true }); });
   async function ready() {
@@ -78,9 +78,16 @@ test('archive failure preserves the last snapshot and restarts Matter', async t 
 });
 
 test('forced termination cannot replace a valid snapshot', async t => {
-  const { backup, socket, ready } = await fixture(t, true);
+  const { backup, socket, ready } = await fixture(t, { ignoreTerm: true, stopTimeout: 100 });
   await writeFile(join(backup, 'latest.tar.gz'), 'previous snapshot');
   assert.equal(await call(socket, 'POST', '/snapshot'), 500);
   assert.equal(await readFile(join(backup, 'latest.tar.gz'), 'utf8'), 'previous snapshot');
+  await ready();
+});
+
+test('default timeout permits a slow WebSocket close before storage flush', async t => {
+  const { backup, socket, ready } = await fixture(t, { firstStopDelay: 31000, stopTimeout: null });
+  assert.equal(await call(socket, 'POST', '/snapshot'), 200);
+  assert.equal(execFileSync('tar', ['-xOzf', join(backup, 'latest.tar.gz'), 'server/state'], { encoding: 'utf8' }), 'flushed');
   await ready();
 });
