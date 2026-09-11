@@ -234,6 +234,17 @@ tasks:
           exit 1
         fi
       - |
+        nozigbee_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
+          --namespace "{{.HELM_NAMESPACE}}" \
+          --values ../../examples/values-minimal.yaml \
+          --set zigbee2mqtt.enabled=false)"
+        if printf '%s\n' "$nozigbee_render" | grep -q 'koenkk/zigbee2mqtt'; then
+          echo 'disabled Zigbee2MQTT must not render its deployment' >&2
+          exit 1
+        fi
+        printf '%s\n' "$nozigbee_render" | grep -q 'name: hacs-install'
+        printf '%s\n' "$nozigbee_render" | grep -Fq 'image: "homeassistant/home-assistant:'
+      - |
         backup_render="$(helm template "{{.HELM_RELEASE_NAME}}" . \
           --namespace "{{.HELM_NAMESPACE}}" \
           --values ../../examples/values-minimal.yaml \

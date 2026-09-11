@@ -284,6 +284,12 @@ variable "homeassistant_backup_encryption_enabled" {
 # Zigbee Configuration
 # ==============================================================================
 
+variable "zigbee_enabled" {
+  description = "Manage the protected Zigbee network identity and deploy Zigbee2MQTT. Disable for deployments without a Zigbee radio."
+  type        = bool
+  default     = true
+}
+
 variable "zigbee_network_key" {
   description = "One-time Zigbee network key override used when explicitly importing an identity."
   type        = string

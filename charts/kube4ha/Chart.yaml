@@ -33,6 +33,7 @@ dependencies:
   - name: zigbee2mqtt
     version: 0.1.2
     repository: file://charts/zigbee2mqtt
+    condition: zigbee2mqtt.enabled
   - name: mosquitto
     version: 0.1.0
     repository: file://charts/mosquitto

@@ -3,25 +3,25 @@
 # ==============================================================================
 
 output "zigbee_secret_status" {
-  description = "Status of the Zigbee keys secret (sensitive)"
-  value = {
-    name         = kubernetes_secret.zigbee_keys.metadata[0].name
-    namespace    = kubernetes_secret.zigbee_keys.metadata[0].namespace
-    protected    = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/protected"]
-    created_at   = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
-    last_updated = kubernetes_secret.zigbee_keys.metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
-  }
+  description = "Status of the Zigbee keys secret (sensitive), or null when Zigbee is disabled"
+  value = var.zigbee_enabled ? {
+    name         = kubernetes_secret.zigbee_keys[0].metadata[0].name
+    namespace    = kubernetes_secret.zigbee_keys[0].metadata[0].namespace
+    protected    = kubernetes_secret.zigbee_keys[0].metadata[0].annotations["kube4ha.fiam.github.com/protected"]
+    created_at   = kubernetes_secret.zigbee_keys[0].metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
+    last_updated = kubernetes_secret.zigbee_keys[0].metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
+  } : null
 }
 
 output "zigbee_configmap_status" {
-  description = "Status of the Zigbee network ConfigMap (non-sensitive)"
-  value = {
-    name         = kubernetes_config_map.zigbee_network.metadata[0].name
-    namespace    = kubernetes_config_map.zigbee_network.metadata[0].namespace
-    protected    = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/protected"]
-    created_at   = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
-    last_updated = kubernetes_config_map.zigbee_network.metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
-  }
+  description = "Status of the Zigbee network ConfigMap (non-sensitive), or null when Zigbee is disabled"
+  value = var.zigbee_enabled ? {
+    name         = kubernetes_config_map.zigbee_network[0].metadata[0].name
+    namespace    = kubernetes_config_map.zigbee_network[0].metadata[0].namespace
+    protected    = kubernetes_config_map.zigbee_network[0].metadata[0].annotations["kube4ha.fiam.github.com/protected"]
+    created_at   = kubernetes_config_map.zigbee_network[0].metadata[0].annotations["kube4ha.fiam.github.com/created.at"]
+    last_updated = kubernetes_config_map.zigbee_network[0].metadata[0].annotations["kube4ha.fiam.github.com/last.updated"]
+  } : null
 }
 
 output "cloudflare_tunnel_hostname" {
@@ -67,14 +67,16 @@ output "helm_values_yaml" {
   description = "Generated values consumed by the Helm deployment task"
   sensitive   = false
   value = yamlencode({
-    # Zigbee2MQTT configuration
+    # Zigbee2MQTT configuration. The subchart renders nothing when disabled,
+    # so the resource references fall back to empty names.
     zigbee2mqtt = {
+      enabled = var.zigbee_enabled
       # Reference OpenTofu-created resources
       secretRef = {
-        name = kubernetes_secret.zigbee_keys.metadata[0].name
+        name = try(kubernetes_secret.zigbee_keys[0].metadata[0].name, "")
       }
       configMapRef = {
-        name = kubernetes_config_map.zigbee_network.metadata[0].name
+        name = try(kubernetes_config_map.zigbee_network[0].metadata[0].name, "")
       }
       config = {
         frontend = {
@@ -148,7 +150,7 @@ output "helm_values_yaml" {
         }
       }
       zigbee2mqttBackup = {
-        enabled = true
+        enabled = var.zigbee_enabled
         mqtt = {
           server = local.mqtt_server
           port   = 1883

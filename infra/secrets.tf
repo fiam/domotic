@@ -11,6 +11,8 @@
 # ------------------------------------------------------------------------------
 
 data "kubernetes_resources" "zigbee_keys_existing" {
+  count = var.zigbee_enabled ? 1 : 0
+
   api_version    = "v1"
   kind           = "Secret"
   namespace      = var.kubernetes_namespace
@@ -21,6 +23,8 @@ data "kubernetes_resources" "zigbee_keys_existing" {
 }
 
 data "kubernetes_resources" "zigbee_network_existing" {
+  count = var.zigbee_enabled ? 1 : 0
+
   api_version    = "v1"
   kind           = "ConfigMap"
   namespace      = var.kubernetes_namespace
@@ -34,8 +38,8 @@ data "kubernetes_resources" "zigbee_network_existing" {
 # ------------------------------------------------------------------------------
 
 locals {
-  existing_secret_object    = try(data.kubernetes_resources.zigbee_keys_existing.objects[0], null)
-  existing_configmap_object = try(data.kubernetes_resources.zigbee_network_existing.objects[0], null)
+  existing_secret_object    = try(data.kubernetes_resources.zigbee_keys_existing[0].objects[0], null)
+  existing_configmap_object = try(data.kubernetes_resources.zigbee_network_existing[0].objects[0], null)
 
   # Check if resources exist
   secret_exists    = local.existing_secret_object != null
@@ -79,18 +83,39 @@ locals {
   desired_pan_id      = var.zigbee_pan_id
   desired_channel     = var.zigbee_channel
 
-  # Check if protected fields would change (Secret)
-  network_key_would_change = local.secret_exists && local.existing_network_key != local.desired_network_key
-  ext_pan_id_would_change  = local.secret_exists && local.existing_ext_pan_id != local.desired_ext_pan_id
+  # Check if protected fields would change (Secret). Absent or empty existing
+  # values record no network identity, so populating them cannot break an
+  # established network and is never treated as a protected change.
+  network_key_would_change = (
+    local.secret_exists &&
+    local.existing_network_key != null &&
+    local.existing_network_key != "" &&
+    local.existing_network_key != local.desired_network_key
+  )
+  ext_pan_id_would_change = (
+    local.secret_exists &&
+    local.existing_ext_pan_id != null &&
+    local.existing_ext_pan_id != "" &&
+    local.existing_ext_pan_id != local.desired_ext_pan_id
+  )
 
   secret_fields_would_change = (
     local.secret_protected &&
     (local.network_key_would_change || local.ext_pan_id_would_change)
   )
 
-  # Check if protected fields would change (ConfigMap)
-  pan_id_would_change  = local.configmap_exists && local.existing_pan_id != local.desired_pan_id
-  channel_would_change = local.configmap_exists && local.existing_channel != local.desired_channel
+  # Check if protected fields would change (ConfigMap). tonumber() of an empty
+  # or missing value yields null through try(), meaning no setting is recorded.
+  pan_id_would_change = (
+    local.configmap_exists &&
+    local.existing_pan_id != null &&
+    local.existing_pan_id != local.desired_pan_id
+  )
+  channel_would_change = (
+    local.configmap_exists &&
+    local.existing_channel != null &&
+    local.existing_channel != local.desired_channel
+  )
 
   configmap_fields_would_change = (
     local.configmap_protected &&
@@ -195,6 +220,8 @@ resource "terraform_data" "zigbee_identity" {
 # ------------------------------------------------------------------------------
 
 resource "terraform_data" "zigbee_protection_check" {
+  count = var.zigbee_enabled ? 1 : 0
+
   lifecycle {
     # Check 1: A restored identity must be paired with its recorded radio
     # settings, even when the target cluster has no existing ConfigMap yet.
@@ -233,6 +260,8 @@ moved {
 # ------------------------------------------------------------------------------
 
 resource "kubernetes_config_map" "zigbee_network" {
+  count = var.zigbee_enabled ? 1 : 0
+
   depends_on = [
     terraform_data.zigbee_protection_check,
     kubernetes_namespace.kube4ha
@@ -279,6 +308,8 @@ resource "kubernetes_config_map" "zigbee_network" {
 # ------------------------------------------------------------------------------
 
 resource "kubernetes_secret" "zigbee_keys" {
+  count = var.zigbee_enabled ? 1 : 0
+
   depends_on = [
     terraform_data.zigbee_protection_check,
     kubernetes_namespace.kube4ha

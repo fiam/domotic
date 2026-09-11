@@ -16,6 +16,10 @@ homeassistant: {}
 
 mosquitto: {}
 
-zigbee2mqtt: {}
+# Set enabled: false to skip Zigbee2MQTT entirely on deployments without a
+# Zigbee radio (with OpenTofu, zigbee_enabled = false sets this and disables
+# the Zigbee identity resources and the snapshot CronJob together).
+zigbee2mqtt:
+  enabled: true
 
 cloudflared: {}

@@ -84,7 +84,7 @@ run "empty_namespace_first_apply" {
 
   assert {
     condition = nonsensitive(
-      kubernetes_secret.zigbee_keys.data["network_key"] == local.desired_network_key
+      kubernetes_secret.zigbee_keys[0].data["network_key"] == local.desired_network_key
     )
     error_message = "The generated Zigbee network key must reach the Kubernetes Secret unchanged."
   }
@@ -215,6 +215,107 @@ run "native_restore_disables_owner_seed" {
     )
     error_message = "Restore mode must disable Home Assistant owner, integration, and storage seeding."
   }
+}
+
+run "zigbee_disabled_omits_zigbee_resources" {
+  command = plan
+
+  variables {
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "kube4ha-test"
+    zigbee_enabled        = false
+  }
+
+  assert {
+    condition = (
+      length(kubernetes_secret.zigbee_keys) == 0 &&
+      length(kubernetes_config_map.zigbee_network) == 0 &&
+      length(terraform_data.zigbee_protection_check) == 0
+    )
+    error_message = "Disabling Zigbee must not manage the network identity resources."
+  }
+
+  assert {
+    condition = (
+      !yamldecode(output.helm_values_yaml).zigbee2mqtt.enabled &&
+      yamldecode(output.helm_values_yaml).zigbee2mqtt.secretRef.name == "" &&
+      !yamldecode(output.helm_values_yaml).homeassistant.zigbee2mqttBackup.enabled
+    )
+    error_message = "Disabling Zigbee must disable the Zigbee2MQTT subchart and its snapshot CronJob."
+  }
+}
+
+run "empty_protected_fields_do_not_block" {
+  command = plan
+
+  variables {
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "kube4ha-test"
+  }
+
+  # A hand-created or partially restored object marked protected but carrying
+  # empty values records no network identity; populating it must not trip the
+  # protection guard.
+  override_data {
+    target = data.kubernetes_resources.zigbee_network_existing
+    values = {
+      objects = [{
+        metadata = {
+          annotations = {
+            "kube4ha.fiam.github.com/protected" = "true"
+          }
+        }
+        data = {
+          pan_id  = ""
+          channel = ""
+        }
+      }]
+    }
+  }
+
+  assert {
+    condition     = local.configmap_exists && local.configmap_protected
+    error_message = "The override must present an existing protected ConfigMap."
+  }
+
+  assert {
+    condition     = !local.protected_fields_would_change
+    error_message = "Empty protected fields must not count as a breaking change."
+  }
+}
+
+run "mismatched_protected_fields_block" {
+  command = plan
+
+  variables {
+    cloudflare_account_id = "00000000000000000000000000000000"
+    cloudflare_domain     = "example.com"
+    kubernetes_namespace  = "kube4ha-test"
+    zigbee_pan_id         = 6754
+  }
+
+  override_data {
+    target = data.kubernetes_resources.zigbee_network_existing
+    values = {
+      objects = [{
+        metadata = {
+          annotations = {
+            "kube4ha.fiam.github.com/protected" = "true"
+          }
+        }
+        data = {
+          pan_id  = "1111"
+          channel = "15"
+        }
+      }]
+    }
+  }
+
+  expect_failures = [
+    terraform_data.zigbee_protection_check,
+  ]
 }
 
 run "remote_custom_components_reach_helm_values" {
