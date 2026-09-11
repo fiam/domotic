@@ -165,6 +165,13 @@ The chart stages the latest Zigbee2MQTT data-directory ZIP below Home
 Assistant's `/config` directory every hour, so it is included in the next
 native backup. See [BACKUP.md](BACKUP.md) for verification and recovery.
 
+Matter Server is also enabled by default. Its backup integration stages a cold
+snapshot before every native Home Assistant backup, so the same R2 backup
+includes the Matter fabric and device pairings. Matter briefly reconnects during
+the snapshot. Normal restore mode keeps Matter stopped until the native backup
+has been restored; `task restore:complete` restores an empty Matter volume from
+that snapshot. See [Matter backups](BACKUP.md#matter-data-in-native-backups).
+
 To restore onto a blank cluster:
 
 ```sh

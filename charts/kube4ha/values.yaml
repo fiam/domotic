@@ -1,5 +1,5 @@
 # kube4ha - Home Automation Umbrella Chart
-# This chart deploys Home Assistant, Zigbee2MQTT, Mosquitto MQTT broker, and Cloudflared tunnel
+# This chart deploys Home Assistant with Matter Server, Zigbee2MQTT, Mosquitto, and Cloudflared
 #
 # Prerequisites:
 # - Gateway API CRDs installed in the cluster
@@ -12,6 +12,8 @@
 # Override values for subcharts
 # Each subchart has its own values.yaml with full configuration options
 
+# Matter Server is enabled by default. Set homeassistant.matterServer.enabled
+# to false to opt out; its persistent fabric data is retained. See DEPLOYMENT.md.
 homeassistant: {}
 
 mosquitto: {}

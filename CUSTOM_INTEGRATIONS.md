@@ -1,9 +1,21 @@
 # Home Assistant custom integrations
 
-This repository installs exactly one custom integration by default: HACS,
-delivered from a pinned, checksum-verified release archive (see
-[HACS](#hacs)). Every other integration is opted into explicitly through
-OpenTofu or private Helm values.
+The chart installs HACS from a pinned, checksum-verified release archive by
+default. It also bundles `kube4ha_matter_backup`, a small chart-owned integration
+that connects Home Assistant's native pre-backup hook to the Matter supervisor.
+Its Python source is packaged in the chart and copied from a ConfigMap to the
+writable configuration PVC, never mounted read-only below `/config`. The
+onboarding hook creates its credential-free config entry in seed mode.
+
+`homeassistant.matterServer.backup.enabled: false` opts out of that integration;
+remove its config entry in Home Assistant before disabling it. The reconciler
+tracks and removes only its managed directory. Its domain is reserved while
+the feature is enabled. When Matter itself is disabled or restore mode is
+active, the installed backup helper is inactive. See
+[Matter backups](BACKUP.md#matter-data-in-native-backups).
+
+Other custom integrations are opted into explicitly through OpenTofu or private
+Helm values. Their artifact verification and delivery contract follows below.
 
 ## Recommended: OpenTofu-managed archive
 

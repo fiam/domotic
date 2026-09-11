@@ -19,7 +19,7 @@ configSeed:
   resources: {}
 
 # Deliver user-selected Home Assistant custom integrations to the writable
-# configuration PVC. No integration is enabled by default. Local sources must
+# configuration PVC. No additional integrations are selected here. Local sources must
 # be packaged below this chart's files directory; a user-managed Git submodule
 # can provide a separately versioned source.
 # Remote sources must be immutable tar.gz archives with a pinned SHA-256;
@@ -59,8 +59,8 @@ hacs:
 # Create or authenticate the admin account through Home Assistant's built-in
 # but undocumented onboarding/login flows. OpenTofu seed mode always enables
 # this hook and supplies the Secret; restore mode disables it. The authenticated
-# hook also creates missing MQTT and R2 entries through their config flows and
-# reconciles HTTP proxy settings. It preserves completed onboarding and never
+# hook also creates missing MQTT, Matter, and R2 entries through their config
+# flows and reconciles HTTP proxy settings. It preserves completed onboarding and never
 # replaces an existing owner or password. Read HOME_ASSISTANT_COMPATIBILITY.md
 # before changing the Home Assistant image.
 onboarding:
@@ -72,6 +72,38 @@ onboarding:
     usernameKey: username
     passwordKey: password
     languageKey: language
+  resources: {}
+
+# Run the pinned OHF Matter Server beside Home Assistant on the host network.
+# Seed-mode onboarding creates a missing Matter entry pointing at loopback;
+# existing entries (including external servers) are preserved. Pair devices
+# using the Companion app. Thread devices also need a Thread border router.
+# Its live fabric keys live on a separate retained PVC. A pre-backup hook
+# stages a cold snapshot inside HA's configuration for native backups.
+# See DEPLOYMENT.md for host networking and BACKUP.md for recovery.
+matterServer:
+  enabled: true
+  image:
+    repository: ghcr.io/matter-js/matterjs-server
+    tag: "1.4.0"
+    pullPolicy: IfNotPresent
+  port: 5580
+  # Empty lets Matter choose the interface; set the physical LAN interface on
+  # hosts with multiple interfaces (for example enp1s0, not cni0 or flannel.1).
+  primaryInterface: ""
+  backup:
+    # Bundle the kube4ha_matter_backup integration and stage a fresh snapshot
+    # before every native HA backup. Matter briefly reconnects; HA stays up.
+    # Restore mode stops Matter automatically. Resuming seed mode restores a
+    # snapshot into an empty Matter claim and never overwrites existing data.
+    enabled: true
+  persistence:
+    # Empty creates <homeassistant-fullname>-matter-pvc, retained on uninstall
+    # or disable. An existing claim must be writable by UID/GID 1000.
+    existingClaim: ""
+    size: 1Gi
+    # Empty inherits config.volume.storageClass (then the cluster default).
+    storageClass: ""
   resources: {}
 
 # Create Home Assistant's official Cloudflare R2 backup integration through its

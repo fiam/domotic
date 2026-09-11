@@ -93,6 +93,77 @@ Deployments that previously exposed the bus through manual `volumes` and
 private `config/values.yaml` before upgrading; the chart now fails rendering
 with an explicit message while both are present.
 
+### Matter devices
+
+The chart runs the Open Home Foundation
+[`matterjs-server` 1.4.0](https://github.com/matter-js/matterjs-server/releases/tag/v1.4.0)
+alongside Home Assistant by default. Both containers share the host network;
+the control API binds only to `127.0.0.1:5580` and has no Service or public route.
+Seed-mode onboarding adds a missing Matter integration through Home Assistant's
+private config flow and preserves existing entries, including external servers.
+
+For manual onboarding, add **Settings → Devices & services → Add integration →
+Matter** with `ws://127.0.0.1:5580/ws`. This address is local to Home Assistant,
+not your browser. Use the Home Assistant Companion app to scan Matter QR codes
+or share devices already paired to another ecosystem. See the
+[Home Assistant Matter guide](https://www.home-assistant.io/integrations/matter/).
+
+Use a 64-bit Linux node on the same LAN as the devices, pairing phone, and Thread
+border routers. Its physical interface needs IPv6 and multicast/mDNS; for
+Thread, it must also accept the border router's IPv6 route information. IPv6
+Internet service is not required. Follow the upstream
+[host requirements](https://github.com/matter-js/matterjs-server/blob/v1.4.0/docs/os_requirements.md)
+while preserving Kubernetes forwarding and routing. A ClusterIP or Cloudflare
+Tunnel does not provide device connectivity, and Kind inside Colima does not
+prove physical-device discovery or commissioning.
+
+Matter over Wi-Fi/Ethernet needs no server radio. Thread devices need a working
+Thread border router; Matter Server does not provide one. Pairing uses the
+phone app. The Matter container does not use host D-Bus, enable local Bluetooth,
+or repurpose a Zigbee adapter.
+
+Override defaults in your private `config/values.yaml` as needed:
+
+```yaml
+homeassistant:
+  matterServer:
+    enabled: true
+    # Physical LAN interface if automatic selection is wrong.
+    primaryInterface: ""
+    port: 5580
+    persistence:
+      size: 1Gi
+      # Empty inherits homeassistant.config.volume.storageClass.
+      storageClass: ""
+      existingClaim: ""
+    resources: {}
+```
+
+`primaryInterface` selects device traffic without changing the loopback API.
+Changing the port also requires reconfiguring the existing Home Assistant entry;
+two releases on the same host cannot share listening ports. Matter requires one
+Home Assistant replica with autoscaling disabled. Only one server may write its
+fabric volume. Audit image upgrades against
+[HOME_ASSISTANT_COMPATIBILITY.md](HOME_ASSISTANT_COMPATIBILITY.md).
+
+Setting `homeassistant.matterServer.enabled: false` removes the container while
+retaining its PVC and existing Home Assistant entry. Disable or remove the entry
+in Home Assistant if no longer needed. Re-enabling Matter reuses the retained
+claim; keep its name and storage settings stable. Native backups include Matter
+state by default; see [Matter backups](BACKUP.md#matter-data-in-native-backups).
+
+Check readiness without printing fabric credentials:
+
+```sh
+kubectl -n kube4ha get pods \
+  -l app.kubernetes.io/name=homeassistant,app.kubernetes.io/component=server
+kubectl -n kube4ha exec deployment/kube4ha-homeassistant -c matter-server -- \
+  /usr/local/bin/healthcheck.sh
+```
+
+Verify commissioning, control, and reconnection on the physical LAN after
+deployment.
+
 ## 2. Configure and install k3s
 
 Configure the API server names before the first installation. This avoids an
@@ -333,8 +404,8 @@ Do not put the Cloudflare token, passwords, or generated Zigbee keys in either
 configuration file. They are retained only in encrypted OpenTofu state. Keep
 the recovery passphrase in a password manager.
 
-The repository installs no custom Home Assistant integration by default. If
-this deployment needs one, declare its public immutable archive in
+The chart installs HACS and its Matter backup integration by default. For
+additional custom integrations, declare a public immutable archive in
 `homeassistant_remote_custom_components` or use a repository-local source in
 private Helm values. Follow [CUSTOM_INTEGRATIONS.md](CUSTOM_INTEGRATIONS.md)
 for checksum, archive-path, upgrade, and removal requirements.
@@ -344,8 +415,8 @@ For a new Home Assistant installation, keep
 owner credential, then creates the Kubernetes Secret consumed by a one-shot
 Helm hook. The hook uses Home Assistant's built-in but undocumented onboarding
 flow, completes the remaining steps, reconciles core and HTTP settings, and
-creates missing MQTT and R2 entries through their config flows. Its temporary
-login token is revoked. It never replaces an existing user, password, or
+creates missing MQTT, Matter, Matter backup, and R2 entries through their config
+flows. Its temporary login token is revoked. It never replaces an existing user, password, or
 integration entry.
 
 For a native Home Assistant backup recovery onto a blank volume, run

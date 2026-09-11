@@ -9,8 +9,8 @@ The buckets have different scoped credentials. Home Assistant cannot read or
 modify infrastructure state.
 
 There is no separate kube4ha repository-backup command. The private Git
-repository, encrypted OpenTofu state, and Home Assistant native backups are the
-recovery set.
+repository, encrypted OpenTofu state, and native Home Assistant backups
+(including the staged Matter snapshot) form the recovery set.
 
 ## What to keep
 
@@ -18,17 +18,22 @@ Keep these independently recoverable:
 
 1. the private deployment repository, including `state/bootstrap.tfstate`;
 2. the recovery passphrase used by OpenTofu;
-3. the native Home Assistant backups in R2.
+3. the native Home Assistant backups in R2, including Matter snapshots.
+
+Matter is enabled by default. Its live fabric credentials reside on a separate
+retained PVC, and native backups include a fresh snapshot as described
+[below](#matter-data-in-native-backups).
 
 The encrypted bootstrap state contains the Cloudflare account token and the
 two bucket-scoped credentials. The main state bucket contains generated Home
 Assistant credentials, Zigbee keys, Cloudflare resource IDs, and the desired
 Kubernetes objects. Home Assistant's backup contains its database and `/config`.
 
-Losing only a Kubernetes cluster or server is recoverable. Losing the recovery
-passphrase makes both OpenTofu states unreadable. Losing the state bucket can
-orphan external Cloudflare resources even if the Home Assistant backup
-survives.
+Losing only a Kubernetes cluster or server is recoverable with all of the above
+backups. Without a Matter snapshot, Matter devices need pairing again.
+Losing the recovery passphrase makes both OpenTofu states unreadable. Losing
+the state bucket can orphan external Cloudflare resources even if the Home
+Assistant backup survives.
 
 ## Bucket setup
 
@@ -82,6 +87,49 @@ the backup settings page. Keep the kit outside the cluster and R2 account.
 
 Verify backups in Home Assistant under **Settings → System → Backups**. An
 actual restore test is stronger than checking that an object exists in R2.
+
+## Matter data in native backups
+
+Matter snapshots are enabled by default. The bundled `kube4ha_matter_backup`
+integration uses Home Assistant's documented
+[pre/post-backup platform](https://developers.home-assistant.io/docs/core/platform/backup/).
+Seed-mode onboarding creates its config entry automatically. For manual
+onboarding, add **kube4ha Matter Backup** under Settings → Devices & services.
+
+Before each native backup, the integration contacts the Matter supervisor over
+a Unix socket shared between the containers. The supervisor gracefully stops
+Matter, waits for storage to flush, validates a compressed archive of the entire
+server directory, and atomically replaces:
+
+```text
+/config/.kube4ha/matter/latest.tar.gz
+```
+
+The archive records its format, Matter image, and creation time. Matter restarts
+even if snapshot creation fails; devices briefly reconnect while Home Assistant
+remains available. A failed graceful stop, forced kill, or invalid snapshot
+fails the native backup and preserves the previous archive. Check failures in
+Home Assistant's backup settings.
+
+Home Assistant includes the snapshot in its native backup, using the same
+destination, encryption, and retention settings. Keep backups outside the
+cluster and out of Git: they contain fabric credentials needed to control paired
+devices. This protects the bundled server only. An external Matter server needs
+its own backup procedure, even if its integration entry is preserved by kube4ha.
+
+To opt out, remove the helper's config entry in Home Assistant, then set:
+
+```yaml
+homeassistant:
+  matterServer:
+    backup:
+      enabled: false
+```
+
+The next rollout removes the helper code and runs Matter without the supervisor.
+Its volume then needs a separate backup while Matter is stopped. Disabling or
+removing the integration in Home Assistant also disables snapshot protection.
+See [below](#restore-onto-a-new-cluster) for automatic recovery.
 
 ## Zigbee2MQTT data in native backups
 
@@ -147,7 +195,16 @@ routes, and deploys only the minimal Home Assistant configuration needed for
 the native upload flow.
 
 Upload the chosen backup in Home Assistant and wait for the application to
-restart. Then run:
+restart. If the pinned Home Assistant upload endpoint rejects it with HTTP 413
+(its body limit is 16 MiB), place the unchanged native `.tar` in the fresh Home
+Assistant volume's `backups/` directory using your storage backend's transfer
+tools. Restart Home Assistant to refresh its local backup inventory, then
+restore through the native onboarding flow. Use the complete native archive;
+extracting only the Matter snapshot is not a substitute. See the
+[compatibility record](HOME_ASSISTANT_COMPATIBILITY.md#matter-addition-2026-09-11)
+for the tested local-agent recovery path.
+
+After the native restore succeeds, run:
 
 ```sh
 task restore:complete
@@ -160,8 +217,22 @@ integration from its checksum-pinned artifact; their directories remain on the
 writable configuration volume so they cannot block Home Assistant from
 replacing `/config` during restoration.
 
+Restore mode omits Matter, its initializer, and integration seeding so no new
+fabric is created during recovery. On `task restore:complete`, an empty Matter
+PVC is populated from the validated snapshot before its controller starts.
+Existing Matter data is never overwritten. An invalid snapshot or mismatched
+Matter image fails initialization; recover with the snapshot's version before
+performing a separately verified upgrade. Backups made before snapshot support
+or with the helper disabled need a separately preserved Matter volume or device
+pairing again.
+
+For a deliberate Matter rollback, select a new empty PVC with
+`homeassistant.matterServer.persistence.existingClaim`. Never extract over live
+state or run two controllers with the same fabric identity simultaneously.
+
 After recovery, confirm:
 
+- the Matter volume has been restored and Matter devices reconnect;
 - Home Assistant history and integrations are present;
 - a new automatic backup reaches R2;
 - MQTT and Zigbee2MQTT are connected;

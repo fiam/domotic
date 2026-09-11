@@ -57,6 +57,7 @@ change in any Home Assistant release, including a patch release.
 | `templates/onboarding-job.yaml` | `config/core/update` retains its schema and persists name and URLs without making them YAML-managed | Declared settings may not be applied or may become read-only in the UI. |
 | `templates/onboarding-job.yaml` | `config_entries/get` and config-flow HTTP views retain their paths, result shapes, authorization, and duplicate semantics | Existing integrations may not be detected, or a missing integration may not be created. |
 | `templates/onboarding-job.yaml` | The MQTT broker step accepts protocol `5` and the nested TCP/no-certificate `other_settings` payload | MQTT setup can stop at a form error or use different connection defaults. |
+| `templates/onboarding-job.yaml` | The Matter user flow on Container installations returns a `manual` form accepting `url` and validates the server's WebSocket schema | Matter setup can fail to connect or reject an incompatible server. Existing entries must be detected first because the flow can reconfigure them. |
 | `templates/onboarding-job.yaml` | The Cloudflare R2 user step accepts the current credential, bucket, endpoint, and prefix fields and validates them with `HeadBucket` | R2 setup can fail validation or store incompatible data. |
 | `templates/onboarding-job.yaml` | `http/config/configure` stages a complete configuration, restarts Home Assistant, and `http/config/promote` confirms the active pending slot before automatic rollback | The hook can lose connectivity, leave an unpromoted trial, or restore defaults after the trial window. |
 | `templates/onboarding-job.yaml` | `backup/config/info`, `backup/agents/info`, and `backup/config/update` retain their schemas and authorization behavior | The automatic R2 schedule may be absent, target the wrong agent, or use incorrect protection or retention. |
@@ -65,14 +66,18 @@ change in any Home Assistant release, including a patch release.
 | `templates/deployment.yaml` | The `.seed` adoption rules distinguish unchanged chart-managed YAML from user-modified files | An update could overwrite YAML edits or fail to restore a missing managed file. |
 | Restore mode | Starting with only `default_config:` exposes Home Assistant's native onboarding backup upload flow and a restored `/config` takes over | A release may require different bootstrap configuration or restore steps. |
 | Custom integration files | A user-selected integration remains compatible with the pinned Home Assistant image and can run from its chart-managed directory on the writable configuration volume | Home Assistant can reject or fail to load the integration even though artifact verification and installation succeeded. |
+| `files/kube4ha_matter_backup/backup.py` | The documented pre/post-backup platform runs before configuration archiving and propagates snapshot failures | Backups may omit current Matter state or incorrectly succeed with stale state. |
+| `files/matter/supervisor.mjs` and `initialize.py` | The pinned Matter entrypoint exits cleanly on SIGTERM, flushes its complete `/data/server` tree, and can reopen that state after restoration | A snapshot could be inconsistent or a restored fabric could fail to load. |
 | `templates/zigbee2mqtt-backup-cronjob.yaml` | Home Assistant continues archiving non-excluded files beneath `/config`, including the staged Zigbee2MQTT ZIP | A native backup may omit the Zigbee2MQTT recovery snapshot even though the CronJob succeeds. |
 
 The chart does not write private `.storage` files. In seed mode, the
-authenticated hook creates MQTT only when no MQTT entry exists, creates R2 only
+authenticated hook creates MQTT only when no MQTT entry exists, creates Matter
+only when enabled and no Matter entry exists, creates R2 only
 when no entry matches the declared bucket title, and reconciles HTTP settings
 through Home Assistant's trial-and-promotion workflow. It never updates
 existing integration credentials. Restore mode must never run the hook or any
-config flow. OpenTofu seed mode supplies admin credentials so chart-derived
+config flow, and keeps the Matter controller stopped until its native snapshot
+has been recovered. OpenTofu seed mode supplies admin credentials so chart-derived
 settings are never silently skipped. Restore mode remains the credential-free
 path for manual onboarding or native backup recovery.
 
@@ -101,6 +106,12 @@ code, constants, schemas, migrations, and tests—not just release notes.
 - [MQTT config flow](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/mqtt/config_flow.py)
 - [MQTT config-flow tests](https://github.com/home-assistant/core/blob/2026.9.0/tests/components/mqtt/test_config_flow.py)
 - [MQTT constants](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/mqtt/const.py)
+- [Matter config flow](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/matter/config_flow.py)
+- [Matter config-flow tests](https://github.com/home-assistant/core/blob/2026.9.0/tests/components/matter/test_config_flow.py)
+- [Matter client requirements](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/matter/manifest.json)
+- [Matter integration setup](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/matter/__init__.py)
+- [Documented pre/post-backup platform](https://developers.home-assistant.io/docs/core/platform/backup/)
+- [Matter Server 1.4.0 CLI and container contract](https://github.com/matter-js/matterjs-server/blob/v1.4.0/docs/docker.md)
 - [Cloudflare R2 config flow](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/cloudflare_r2/config_flow.py)
 - [Backup WebSocket command schemas](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/websocket.py)
 - [Automatic schedule and retention model](https://github.com/home-assistant/core/blob/2026.9.0/homeassistant/components/backup/config.py)
@@ -165,6 +176,12 @@ required payloads and migration behavior more precisely than user-facing docs.
     separate empty-volume Zigbee2MQTT recovery procedure before relying on it.
 13. Update the README badge and the verified date, versions, source links, and
     observations in this document. Record only what was actually exercised.
+14. Exercise the pinned Matter Server with the proposed Home Assistant client:
+    fresh config flow, loaded state, idempotent hook, container restart, disabled
+    mode, and recovery onto an empty Matter volume. Verify existing external
+    Matter entries are preserved. Inspect only entry schema/key names and
+    redacted state. Test device commissioning and reconnection on the physical
+    LAN; Kind's WebSocket connection alone cannot verify multicast/IPv6.
 
 Do not test an upgrade first against the production PVC. Preserve a native
 Home Assistant backup, encrypted OpenTofu state, and the Zigbee network
@@ -243,3 +260,69 @@ directories on the PVC, leaving unrelated integrations alone. Managed removal
 and checksum-pinned reinstallation were both exercised after the restore.
 Runtime compatibility remains an obligation of whichever integrations a
 deployment chooses.
+
+## Matter addition (2026-09-11)
+
+Home Assistant remains pinned to `2026.9.0`. Its Matter manifest requires
+`matter-python-client==1.4.0`. The chart adds the maintained OHF
+`ghcr.io/matter-js/matterjs-server:1.4.0` image; the retired Python server is not
+used. The tested image manifest digest is
+`sha256:54232d0d3e7dff5a54759469d2753399270412b4c30c55b31750a4595e4cb236`.
+
+The source audit at the exact tags confirmed the Container user flow leads
+directly to a `manual` form accepting `url`. It calls `MatterClient.connect()`
+to validate the server, then stores `url`, `use_addon=false`, and
+`integration_created_addon=false`. The same flow can update an existing entry,
+so the hook queries all Matter entries first and preserves any existing one.
+The server's image uses UID/GID 1000, supports loopback binding and a selected
+primary Matter interface, and supplies `/usr/local/bin/healthcheck.sh`.
+
+A new disposable Kind cluster and fresh Home Assistant and Matter PVCs were
+used for a real seed-mode deployment. The hook created exactly one Matter
+entry, schema `1.1`, and the integration reported `loaded`. The server reported
+WebSocket schema `13`, minimum supported schema `11`. A second hook run
+preserved the entry; after reconfiguring it through Home Assistant to a
+separate test server, another hook run also preserved that URL and entry ID.
+Disabling Matter removed its container while retaining its PVC; re-enabling
+reused that claim and preserved the original fabric identity.
+
+A full pod rollout preserved the entry and fabric identity. The server ran as
+UID/GID 1000, and its control API was reachable on loopback but not through the
+node's network address.
+
+The bundled `kube4ha_matter_backup` integration uses Home Assistant's documented
+pre/post-backup platform. Its seed-mode config entry is created through the
+same private config-flow endpoint used elsewhere. A Unix socket shared only
+between the two containers requests a bounded, graceful stop, validated archive,
+and restart from the Matter supervisor. The runtime script resolves Kubernetes
+ConfigMap symlinks when detecting its entrypoint; the fresh-cluster test caught
+and corrected that startup requirement.
+
+A real native Home Assistant backup included the generated Matter archive under
+`/config/.kube4ha/matter/latest.tar.gz`, with format and image metadata. A forced
+snapshot validation failure failed the native backup and restarted Matter; unit
+tests also confirm a forced process kill cannot replace a valid snapshot.
+
+The native upload endpoint rejected the 19 MiB test backup at its 16 MiB HTTP
+body limit. For the complete restore test, the unchanged native archive was
+placed in the fresh instance's local backup directory, Home Assistant was
+restarted to refresh its agent inventory, and the native onboarding restore API
+was used. This is an existing limitation of the pinned HTTP/upload path, not a
+Matter archive size limit; the Matter snapshot itself was about 300 KiB.
+
+The full native restore recovered Home Assistant's configuration and embedded
+Matter snapshot into a fresh Home Assistant PVC. Returning to seed mode created
+an empty Matter PVC and automatically restored the snapshot before starting the
+server. The original Matter entry ID and hashed fabric identity were preserved,
+the integration reached `loaded`, and a subsequent native backup succeeded.
+
+The full `task check` suite includes unsafe/corrupt archive rejection, existing
+fabric preservation, snapshot serialization, graceful flush ordering, process
+restart after failure, and the default/disabled/restore Helm renderings.
+Restore-mode rendering contains no Matter process, initializer, or onboarding
+hook. The live Matter PVC remains separate, while native backups include the
+cold snapshot. See [BACKUP.md](BACKUP.md#restore-onto-a-new-cluster) for recovery.
+
+Physical device commissioning, Thread routes, and device reconnection are
+not verified by this Kind test. They require testing on the production LAN;
+the Colima/Kind bridge and VM topology does not establish those capabilities.

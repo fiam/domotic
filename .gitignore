@@ -41,6 +41,9 @@ infra/helm-values-*.yaml
 /.domotic/
 *.tmp
 *.log
+/tmp/
+__pycache__/
+*.py[cod]
 
 # Reverse-engineering inputs and application packages (never commit)
 *.apk

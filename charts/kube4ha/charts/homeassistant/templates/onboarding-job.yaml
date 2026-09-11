@@ -46,6 +46,8 @@ spec:
               base_url = os.environ["HOMEASSISTANT_URL"].rstrip("/")
               client_id = os.environ["HOMEASSISTANT_CLIENT_ID"]
               mqtt_enabled = os.environ.get("MQTT_ENABLED") == "true"
+              matter_enabled = os.environ.get("MATTER_ENABLED") == "true"
+              matter_backup_enabled = os.environ.get("MATTER_BACKUP_ENABLED") == "true"
               r2_enabled = os.environ.get("R2_ENABLED") == "true"
               automatic_backups_enabled = (
                   os.environ.get("AUTOMATIC_BACKUP_ENABLED") == "true"
@@ -267,11 +269,21 @@ spec:
                                   websocket, "config_entries/get", domain="mqtt"
                               )
                           r2_entries = []
+                          matter_entries = []
+                          matter_backup_entries = []
+                          if matter_enabled:
+                              matter_entries = await command(
+                                  websocket, "config_entries/get", domain="matter"
+                              )
                           if r2_enabled:
                               r2_entries = await command(
                                   websocket,
                                   "config_entries/get",
                                   domain="cloudflare_r2",
+                              )
+                          if matter_backup_enabled:
+                              matter_backup_entries = await command(
+                                  websocket, "config_entries/get", domain="kube4ha_matter_backup"
                               )
                       finally:
                           await websocket.close()
@@ -294,6 +306,22 @@ spec:
                                   },
                                   token,
                               )
+
+                      if matter_enabled:
+                          if matter_entries:
+                              print("Preserving the existing Matter config entry")
+                          else:
+                              create_config_entry(
+                                  "matter",
+                                  {"url": os.environ["MATTER_SERVER_URL"]},
+                                  token,
+                              )
+
+                      if matter_backup_enabled:
+                          if matter_backup_entries:
+                              print("Preserving the existing Matter backup config entry")
+                          else:
+                              create_config_entry("kube4ha_matter_backup", {}, token)
 
                       if r2_enabled:
                           matching_r2_entries = [
@@ -635,6 +663,14 @@ spec:
               value: {{ .Values.config.http.trustedProxies | toJson | quote }}
             - name: MQTT_ENABLED
               value: {{ (and .Values.config.mqtt (not (empty .Values.config.mqtt.server)) (gt (int .Values.config.mqtt.port) 0)) | quote }}
+            - name: MATTER_ENABLED
+              value: {{ .Values.matterServer.enabled | quote }}
+            - name: MATTER_BACKUP_ENABLED
+              value: {{ (and .Values.matterServer.enabled .Values.matterServer.backup.enabled) | quote }}
+          {{- if .Values.matterServer.enabled }}
+            - name: MATTER_SERVER_URL
+              value: {{ printf "ws://127.0.0.1:%d/ws" (int .Values.matterServer.port) | quote }}
+          {{- end }}
           {{- if and .Values.config.mqtt .Values.config.mqtt.server .Values.config.mqtt.port }}
             - name: MQTT_SERVER
               value: {{ .Values.config.mqtt.server | quote }}

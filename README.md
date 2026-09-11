@@ -5,7 +5,7 @@
 [![OpenTofu v1.12+](https://img.shields.io/badge/OpenTofu-v1.12%2B-FFDA18?style=flat-square&logo=opentofu&logoColor=black)](https://opentofu.org/)
 [![Helm 3](https://img.shields.io/badge/Helm-3-0F1689?style=flat-square&logo=helm&logoColor=white)](https://helm.sh/)
 
-Home Assistant, Zigbee2MQTT, Mosquitto, and Cloudflare Tunnel on Kubernetes.
+Home Assistant, Matter Server, Zigbee2MQTT, Mosquitto, and Cloudflare Tunnel on Kubernetes.
 
 kube4ha works with any Kubernetes environment that ships Gateway API. The
 [k3s guide](DEPLOYMENT.md) covers a common single-server home setup, but k3s is
@@ -16,7 +16,8 @@ not required.
 Install `kubectl`, OpenTofu 1.12 or newer, Helm 3, Git, `jq`, and
 [Task](https://taskfile.dev/docs/installation). If you use
 [tenv](https://tofuutils.github.io/tenv/), the included `.opentofu-version`
-selects the tested OpenTofu release automatically.
+selects the tested OpenTofu release automatically. Contributor checks also need
+Python 3.12+ and Node.js 22.13+ for the Matter backup tests.
 
 Create an independent private repository for your home's configuration:
 
@@ -117,7 +118,21 @@ With the documented k3s setup, the local routes are:
 Home Assistant is also available at the Cloudflare hostname in the OpenTofu
 configuration.
 
+## Matter devices
+
+Matter Server is enabled by default alongside Home Assistant. Seed-mode
+deployments automatically add a missing Matter integration. Its URL is
+`ws://127.0.0.1:5580/ws`; use the Home Assistant Companion app to pair devices.
+Thread devices additionally require a Thread border router and working LAN
+IPv6/multicast. See [Matter setup](DEPLOYMENT.md#matter-devices) for configuration
+and requirements.
+
 ## Backups and recovery
+
+Before each native backup, kube4ha briefly stops the Matter process and stages
+its fabric state inside Home Assistant's configuration. The same backup then
+protects Matter pairings, and normal recovery restores an empty Matter volume
+automatically. See [Matter backups](BACKUP.md#matter-data-in-native-backups).
 
 Home Assistant configures daily native backups in `<prefix>-backups` and keeps
 seven copies by default. Backups are unencrypted unless

@@ -6,3 +6,10 @@
 {{- else }}
 2. On a fresh volume, complete Home Assistant onboarding manually.
 {{- end }}
+{{- if .Values.homeassistant.matterServer.enabled }}
+
+Matter Server: ws://127.0.0.1:{{ .Values.homeassistant.matterServer.port }}/ws
+Seed-mode onboarding creates a missing Matter integration. Pair devices with
+the Home Assistant Companion app; Thread devices also need a border router.
+Native backups include Matter snapshots when the Matter backup helper is enabled.
+{{- end }}

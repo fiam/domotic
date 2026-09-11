@@ -72,6 +72,64 @@ tasks:
     cmds:
       - task: lint
       - |
+        matter_render="$(helm template matter-test charts/homeassistant \
+          --set onboarding.enabled=true \
+          --set onboarding.existingSecret.name=test-owner)"
+        printf '%s\n' "$matter_render" | grep -Fq 'image: "ghcr.io/matter-js/matterjs-server:1.4.0"'
+        printf '%s\n' "$matter_render" | grep -Fq 'name: matter-server'
+        printf '%s\n' "$matter_render" | grep -Fq 'value: "127.0.0.1"'
+        printf '%s\n' "$matter_render" | grep -Fq 'value: "ws://127.0.0.1:5580/ws"'
+        printf '%s\n' "$matter_render" | grep -Fq 'helm.sh/resource-policy: keep'
+        printf '%s\n' "$matter_render" | grep -Fq 'claimName: matter-test-homeassistant-matter-pvc'
+        printf '%s\n' "$matter_render" | grep -Fq 'subPath: .kube4ha/matter'
+        printf '%s\n' "$matter_render" | grep -Fq 'name: KUBE4HA_MATTER_BACKUP_ENABLED'
+        printf '%s\n' "$matter_render" | grep -Fq 'name: matter-backup-install'
+        printf '%s\n' "$matter_render" | grep -Fq 'name: matter-state-initialize'
+        # A separate claim must not be mounted under HA's /config, which is
+        # replaced during native restoration.
+        if printf '%s\n' "$matter_render" | grep -q 'mountPath: /config/'; then
+          echo 'Matter must not shadow a directory in Home Assistant native backups' >&2
+          exit 1
+        fi
+        disabled_render="$(helm template matter-test charts/homeassistant \
+          --set onboarding.enabled=true \
+          --set onboarding.existingSecret.name=test-owner \
+          --set matterServer.enabled=false)"
+        if printf '%s\n' "$disabled_render" | grep -Eq 'name: matter-server|matter-pvc|name: MATTER_SERVER_URL|name: matter-data-permissions'; then
+          echo 'disabled Matter must not render its container, claim, init container, or bootstrap URL' >&2
+          exit 1
+        fi
+        custom_render="$(helm template matter-test charts/homeassistant \
+          --set onboarding.enabled=true \
+          --set onboarding.existingSecret.name=test-owner \
+          --set matterServer.port=5581 \
+          --set matterServer.primaryInterface=enp1s0 \
+          --set matterServer.persistence.existingClaim=existing-matter)"
+        printf '%s\n' "$custom_render" | grep -Fq 'value: "ws://127.0.0.1:5581/ws"'
+        printf '%s\n' "$custom_render" | grep -Fq 'value: "enp1s0"'
+        printf '%s\n' "$custom_render" | grep -Fq 'claimName: existing-matter'
+        if printf '%s\n' "$custom_render" | grep -q 'name: matter-test-homeassistant-matter-pvc'; then
+          echo 'existing Matter claims must not be recreated' >&2
+          exit 1
+        fi
+        for invalid in replicaCount=2 autoscaling.enabled=true matterServer.port=8123 matterServer.port=80 matterServer.image.tag=stable; do
+          if helm template matter-test charts/homeassistant --set "$invalid" >/dev/null 2>&1; then
+            echo "unsafe Matter configuration must fail rendering: $invalid" >&2
+            exit 1
+          fi
+        done
+        restore_matter="$(helm template matter-test charts/homeassistant --set configSeed.mode=restore)"
+        if printf '%s\n' "$restore_matter" | grep -Eq 'name: matter-server|name: matter-state-initialize|kind: Job|matter-test-homeassistant-matter-pvc'; then
+          echo 'restore mode must not start Matter or provision a new fabric before HA recovery' >&2
+          exit 1
+        fi
+        no_backup="$(helm template matter-test charts/homeassistant --set matterServer.backup.enabled=false)"
+        printf '%s\n' "$no_backup" | grep -Fq 'name: matter-server'
+        if printf '%s\n' "$no_backup" | grep -q 'name: matter-backup-install'; then
+          echo 'disabling Matter backup must disable its integration installer' >&2
+          exit 1
+        fi
+      - |
         helm template "{{.HELM_RELEASE_NAME}}" . \
           --namespace "{{.HELM_NAMESPACE}}" \
           --kube-version 1.23.0 \

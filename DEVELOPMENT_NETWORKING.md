@@ -25,6 +25,13 @@ LAN. Multicast discovery protocols such as mDNS and SSDP may still fail across
 the Docker and VM boundaries. Test discovery-dependent integrations on the
 physical k3s server when exact production behavior matters.
 
+The default Matter Server shares Home Assistant's host network and listens
+on loopback port 5580 for its WebSocket API. A successful Kind integration
+setup verifies the API and persistence, not commissioning on the physical LAN:
+Matter depends on IPv6 and multicast across the device/border-router network.
+See [Matter setup](DEPLOYMENT.md#matter-devices) before testing physical Matter
+or Thread devices.
+
 Do not hardcode the observed Colima or Kind addresses. They are allocated when
 the VM and cluster are created.
 

@@ -1,0 +1,23 @@
+{{- if and .Values.matterServer.enabled (eq .Values.configSeed.mode "seed") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "homeassistant.fullname" . }}-matter-runtime
+data:
+  {{- range $path, $_ := .Files.Glob "files/matter/*" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+---
+{{- end }}
+{{- if .Values.matterServer.backup.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "homeassistant.fullname" . }}-matter-backup-integration
+data:
+  {{- range $path, $_ := .Files.Glob "files/kube4ha_matter_backup/*" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}

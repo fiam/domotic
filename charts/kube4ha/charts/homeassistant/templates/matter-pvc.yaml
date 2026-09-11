@@ -1,0 +1,21 @@
+{{- if and .Values.matterServer.enabled (eq .Values.configSeed.mode "seed") (not .Values.matterServer.persistence.existingClaim) }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "homeassistant.fullname" . }}-matter-pvc
+  annotations:
+    # Losing the fabric keys means pairing every device again. Retain this
+    # claim when Matter is disabled or the Helm release is uninstalled.
+    helm.sh/resource-policy: keep
+  labels:
+    {{- include "homeassistant.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- with (.Values.matterServer.persistence.storageClass | default .Values.config.volume.storageClass) }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.matterServer.persistence.size }}
+{{- end }}
