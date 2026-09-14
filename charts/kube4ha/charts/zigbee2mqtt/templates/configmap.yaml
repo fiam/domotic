@@ -20,5 +20,6 @@ data:
         url: {{ $cfg.frontend.url }}
     homeassistant:
         enabled: true
+        experimental_event_entities: true
     advanced:
         log_level: debug

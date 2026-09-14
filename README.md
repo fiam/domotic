@@ -11,6 +11,11 @@ kube4ha works with any Kubernetes environment that ships Gateway API. The
 [k3s guide](DEPLOYMENT.md) covers a common single-server home setup, but k3s is
 not required.
 
+Zigbee2MQTT enables Home Assistant MQTT discovery and
+`homeassistant.experimental_event_entities` for all deployments. Devices that
+expose actions get Home Assistant event entities. Their event types and
+attributes are experimental and may change between Zigbee2MQTT releases.
+
 ## Install
 
 Install `kubectl`, OpenTofu 1.12 or newer, Helm 3, Git, `jq`, and
