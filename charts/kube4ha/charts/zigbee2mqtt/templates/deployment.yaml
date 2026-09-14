@@ -5,6 +5,9 @@ metadata:
   labels:
     {{- include "zigbee2mqtt.labels" . | nindent 4 }}
 spec:
+  # Stop the previous process before the replacement opens the same Zigbee radio.
+  strategy:
+    type: Recreate
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
